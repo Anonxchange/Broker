@@ -8,6 +8,11 @@ const heroBackgrounds = `
     background-size: min(40vw, 500px) auto, cover;
   }
 
+  .section-header .home-hero-wrap > .v-flex.is-2-5rem {
+    align-items: flex-start;
+    gap: 1rem !important;
+  }
+
   .w-webflow-badge {
     display: none !important;
   }
@@ -18,7 +23,7 @@ const heroBackgrounds = `
     }
 
     .padding-hero-section {
-      padding-top: 5rem !important;
+      padding-top: 6.5rem !important;
     }
   }
 `;
@@ -26,6 +31,10 @@ const heroBackgrounds = `
 const pageTitle = 'Auvrenthia Markets | Multi-Asset Investment Broker';
 const pageDescription =
   'Explore investment opportunities across crypto, forex, agriculture, real estate, stocks, commodities, and more with Auvrenthia Markets.';
+
+const contactEmailUser = 'support';
+const contactEmailDomain = 'aurevathinmarket.com';
+const contactEmail = `${contactEmailUser}@${contactEmailDomain}`;
 
 const textReplacements: Record<string, string> = {
   'Trading Community': 'Markets',
@@ -273,6 +282,31 @@ function preparePage(source: string) {
     )
     .forEach((meta) => meta.setAttribute('content', pageTitle));
 
+  pageDocument.querySelector('.page-wrapper')?.setAttribute('id', 'home');
+  const navigation = pageDocument.querySelector('.navbar-menu');
+  if (navigation) {
+    const navigationItems = [
+      'Home',
+      'About',
+      'Services',
+      'Investments',
+      'Lending',
+      'Market',
+      'Resources',
+      'Contact',
+    ];
+    navigation.replaceChildren(
+      ...navigationItems.map((label) => {
+        const link = pageDocument.createElement('a');
+        link.className = 'navbar-link w-inline-block';
+        link.href = label === 'Home' ? '#home' : '#';
+        link.textContent = label;
+        return link;
+      }),
+    );
+  }
+  pageDocument.querySelector('.navbar-button-wrapper')?.remove();
+
   const textWalker = pageDocument.createTreeWalker(
     pageDocument.body,
     NodeFilter.SHOW_TEXT,
@@ -285,7 +319,13 @@ function preparePage(source: string) {
     );
     const original = textNode.nodeValue ?? '';
     const normalized = original.trim().replace(/\s+/g, ' ');
-    const replacement = textReplacements[normalized];
+    const isEmailAddress = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized);
+    const rebrandedText = isEmailAddress
+      ? undefined
+      : normalized.replace(/\bwealth\s*hub\b/gi, 'Auvrenthia Markets');
+    const replacement =
+      textReplacements[normalized] ??
+      (rebrandedText !== normalized ? rebrandedText : undefined);
 
     if (!isProtected && replacement !== undefined) {
       const leading = original.match(/^\s*/)?.[0] ?? '';
@@ -293,6 +333,43 @@ function preparePage(source: string) {
       textNode.nodeValue = `${leading}${replacement}${trailing}`;
     }
     textNode = textWalker.nextNode();
+  }
+
+  pageDocument
+    .querySelectorAll('[alt], [title], [aria-label]')
+    .forEach((element) => {
+      ['alt', 'title', 'aria-label'].forEach((attribute) => {
+        const value = element.getAttribute(attribute);
+        if (!value || /[^\s@]+@[^\s@]+\.[^\s@]+/.test(value)) return;
+        element.setAttribute(
+          attribute,
+          value.replace(/\bwealth\s*hub\b/gi, 'Auvrenthia Markets'),
+        );
+      });
+    });
+
+  const emailContainer = pageDocument.querySelector('#email-container');
+  if (emailContainer) {
+    emailContainer.setAttribute('aria-label', `Email address: ${contactEmail}`);
+    const emailText = emailContainer.querySelector('svg text');
+    if (emailText) emailText.textContent = contactEmail;
+  }
+
+  const emailBuilder = Array.from(pageDocument.scripts).find((script) =>
+    /const\s+domain\s*=\s*["']wealthhubtrading\.com["']/.test(
+      script.textContent ?? '',
+    ),
+  );
+  if (emailBuilder?.textContent) {
+    emailBuilder.textContent = emailBuilder.textContent
+      .replace(
+        /const\s+user\s*=\s*["'][^"']+["'];/,
+        `const user = ${JSON.stringify(contactEmailUser)};`,
+      )
+      .replace(
+        /const\s+domain\s*=\s*["'][^"']+["'];/,
+        `const domain = ${JSON.stringify(contactEmailDomain)};`,
+      );
   }
 
   const typedWordsScript = Array.from(pageDocument.scripts).find((script) =>
