@@ -17,6 +17,87 @@ const heroBackgrounds = `
     display: none !important;
   }
 
+  @keyframes investment-logo-marquee {
+    from {
+      transform: translate3d(0, 0, 0);
+    }
+    to {
+      transform: translate3d(-33.333333%, 0, 0);
+    }
+  }
+
+  .splide__list.is-logos {
+    width: max-content !important;
+    animation: investment-logo-marquee 40s linear infinite;
+    will-change: transform;
+  }
+
+  .navbar-menu-actions {
+    display: none;
+  }
+
+  .navbar-menu-action {
+    box-sizing: border-box;
+    display: flex;
+    min-height: 3rem;
+    width: 100%;
+    align-items: center;
+    justify-content: center;
+    gap: 0.625rem;
+    border: 1px solid #354256;
+    border-radius: 0.375rem;
+    padding: 0.75rem 1rem;
+    background: transparent;
+    color: #edf2f8;
+    font: inherit;
+    font-size: 1rem;
+    font-weight: 500;
+    opacity: 1;
+    cursor: default;
+  }
+
+  .navbar-menu-action:disabled {
+    opacity: 1;
+  }
+
+  .navbar-menu-action--wallet {
+    border-color: #d6b459;
+    background: #d6b459;
+    color: #101722;
+    font-weight: 600;
+  }
+
+  .navbar-menu-action-icon {
+    width: 1.125rem;
+    height: 1.125rem;
+    flex: none;
+  }
+
+  @media screen and (max-width: 991px) {
+    .navbar-menu.is-page-height-tablet {
+      flex-direction: column !important;
+      align-items: stretch !important;
+      justify-content: flex-start !important;
+      gap: 0 !important;
+    }
+
+    .navbar-menu-actions {
+      display: grid !important;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.625rem;
+      width: 100%;
+      margin-top: 1.5rem;
+      padding-top: 1.25rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.16);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .splide__list.is-logos {
+      animation: none !important;
+    }
+  }
+
   @media screen and (max-width: 767px) {
     .logo-link svg text {
       font-size: 20px !important;
@@ -230,6 +311,17 @@ const textReplacements: Record<string, string> = {
 
 function preparePage(source: string) {
   const pageDocument = new DOMParser().parseFromString(source, 'text/html');
+  pageDocument
+    .querySelectorAll('script[src*="splide"], link[href*="splide"]')
+    .forEach((asset) => asset.remove());
+  const logoSliderScript = Array.from(pageDocument.scripts).find((script) =>
+    /new\s+Splide\(\s*["']#logos["']/.test(script.textContent ?? ''),
+  );
+  logoSliderScript?.remove();
+  pageDocument
+    .querySelector<HTMLElement>('#logos-list')
+    ?.style.removeProperty('transform');
+
   const base = pageDocument.createElement('base');
   base.href = '/wealthhub/';
   pageDocument.head.prepend(base);
@@ -304,6 +396,54 @@ function preparePage(source: string) {
         return link;
       }),
     );
+
+    const menuActions = pageDocument.createElement('div');
+    menuActions.className = 'navbar-menu-actions';
+    const actionDefinitions = [
+      {
+        label: 'Login',
+        variant: 'login',
+        paths: [
+          'M10 17l5-5-5-5',
+          'M15 12H3',
+          'M13 4h6a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6',
+        ],
+      },
+      {
+        label: 'Create Wallet',
+        variant: 'wallet',
+        paths: ['M3 7h18v13H3z', 'M3 10h18', 'M16 14h2'],
+      },
+    ];
+    const svgNamespace = 'http://www.w3.org/2000/svg';
+    actionDefinitions.forEach(({ label, variant, paths }) => {
+      const button = pageDocument.createElement('button');
+      button.type = 'button';
+      button.disabled = true;
+      button.title = `${label} coming soon`;
+      button.className = `navbar-menu-action navbar-menu-action--${variant}`;
+
+      const icon = pageDocument.createElementNS(svgNamespace, 'svg');
+      icon.setAttribute('viewBox', '0 0 24 24');
+      icon.setAttribute('fill', 'none');
+      icon.setAttribute('stroke', 'currentColor');
+      icon.setAttribute('stroke-width', '1.8');
+      icon.setAttribute('stroke-linecap', 'round');
+      icon.setAttribute('stroke-linejoin', 'round');
+      icon.setAttribute('class', 'navbar-menu-action-icon');
+      icon.setAttribute('aria-hidden', 'true');
+      paths.forEach((pathData) => {
+        const path = pageDocument.createElementNS(svgNamespace, 'path');
+        path.setAttribute('d', pathData);
+        icon.appendChild(path);
+      });
+
+      const text = pageDocument.createElement('span');
+      text.textContent = label;
+      button.append(icon, text);
+      menuActions.appendChild(button);
+    });
+    navigation.appendChild(menuActions);
   }
   pageDocument.querySelector('.navbar-button-wrapper')?.remove();
 
