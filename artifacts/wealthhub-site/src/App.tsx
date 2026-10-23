@@ -1,4 +1,9 @@
 import { useEffect, useState } from 'react';
+<<<<<<< HEAD
+import { Router as WouterRouter, useLocation } from 'wouter';
+import AuthPage from './pages/AuthPage';
+=======
+>>>>>>> 8827e5a7436f220579f19b09b2332ff9398f0d28
 
 const heroBackgrounds = `
   .section-header {
@@ -33,11 +38,139 @@ const heroBackgrounds = `
   }
 
   .navbar-menu-actions {
+<<<<<<< HEAD
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: 0.35rem;
+=======
     display: none;
+>>>>>>> 8827e5a7436f220579f19b09b2332ff9398f0d28
   }
 
   .navbar-menu-action {
     box-sizing: border-box;
+<<<<<<< HEAD
+    display: inline-flex;
+    min-height: 2.5rem;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    border: 1px solid rgba(183, 208, 238, 0.32);
+    border-radius: 999px;
+    padding: 0.55rem 1rem;
+    background: rgba(10, 28, 49, 0.16);
+    color: #eaf3ff;
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 550;
+    text-decoration: none !important;
+    cursor: pointer;
+    transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+  }
+
+  .navbar-menu-action:hover {
+    transform: translateY(-1px);
+    border-color: rgba(132, 192, 255, 0.75);
+    background: rgba(32, 92, 242, 0.22);
+  }
+
+  .navbar-menu-action:focus-visible {
+    outline: 2px solid #80c5ff;
+    outline-offset: 3px;
+  }
+
+  .navbar-menu-action--signup {
+    border-color: #205cf2;
+    background: #205cf2;
+    color: #fff;
+  }
+
+  .navbar-menu-action--signup:hover {
+    border-color: #4e82ff;
+    background: #174bd0;
+  }
+
+  .navbar-menu-action-icon {
+    width: 1rem;
+    height: 1rem;
+    flex: none;
+  }
+
+  .navbar-link,
+  .navbar-dropdown-link,
+  .navbar-menu a {
+    text-decoration: none !important;
+  }
+
+  .navbar-link:hover,
+  .navbar-dropdown-link:hover,
+  .navbar-menu a:hover {
+    text-decoration: none !important;
+  }
+
+  .navbar-menu-action span {
+    white-space: nowrap;
+  }
+
+  .navbar-menu-actions a {
+    text-decoration: none !important;
+  }
+
+  .navbar-menu-action svg {
+    display: block;
+  }
+
+  .navbar-menu-action:active {
+    transform: translateY(0);
+  }
+
+  .navbar-menu-action--login {
+    color: #eaf3ff;
+  }
+
+  .navbar-menu-action--login:hover {
+    color: #ffffff;
+  }
+
+  .navbar-menu-action--signup {
+    font-weight: 650;
+  }
+
+  .navbar-menu-action--signup .navbar-menu-action-icon {
+    display: none;
+  }
+
+  .navbar-menu-action--login .navbar-menu-action-icon {
+    display: none;
+  }
+
+  .navbar-menu-action:visited {
+    color: inherit;
+  }
+
+  .navbar-menu-action--signup:visited {
+    color: #fff;
+  }
+
+  .navbar-menu-action--login:visited {
+    color: #eaf3ff;
+  }
+
+  .navbar-menu-action:focus-visible,
+  .navbar-menu-action:focus {
+    text-decoration: none !important;
+  }
+
+  .navbar-menu-actions {
+    flex: none;
+  }
+
+  .navbar-menu-action {
+    align-items: center;
+  }
+
+=======
     display: flex;
     min-height: 3rem;
     width: 100%;
@@ -73,6 +206,7 @@ const heroBackgrounds = `
     flex: none;
   }
 
+>>>>>>> 8827e5a7436f220579f19b09b2332ff9398f0d28
   #pricing .flex-2rem-wrap.investment-plan-grid {
     display: grid !important;
     width: 100%;
@@ -621,7 +755,11 @@ function renderInvestmentPlans(pageDocument: Document) {
       duration.className = 'investment-plan-card__duration';
       const timer = pageDocument.createElement('span');
       timer.setAttribute('aria-hidden', 'true');
+<<<<<<< HEAD
+      timer.textContent = 'Duration: ';
+=======
       timer.textContent = '⏱️';
+>>>>>>> 8827e5a7436f220579f19b09b2332ff9398f0d28
       duration.append(timer, pageDocument.createTextNode(plan.duration));
 
       const benefits = pageDocument.createElement('ul');
@@ -748,6 +886,10 @@ function preparePage(source: string) {
     .forEach((meta) => meta.setAttribute('content', pageTitle));
 
   pageDocument.querySelector('.page-wrapper')?.setAttribute('id', 'home');
+<<<<<<< HEAD
+  pageDocument.querySelector<HTMLAnchorElement>('.logo-link')?.setAttribute('href', '/');
+=======
+>>>>>>> 8827e5a7436f220579f19b09b2332ff9398f0d28
   const navigation = pageDocument.querySelector('.navbar-menu');
   if (navigation) {
     const navigationItems = [
@@ -776,6 +918,10 @@ function preparePage(source: string) {
       {
         label: 'Login',
         variant: 'login',
+<<<<<<< HEAD
+        href: '/login',
+=======
+>>>>>>> 8827e5a7436f220579f19b09b2332ff9398f0d28
         paths: [
           'M10 17l5-5-5-5',
           'M15 12H3',
@@ -783,6 +929,21 @@ function preparePage(source: string) {
         ],
       },
       {
+<<<<<<< HEAD
+        label: 'Sign up',
+        variant: 'signup',
+        href: '/signup',
+        paths: ['M12 5v14', 'M5 12h14'],
+      },
+    ];
+    const svgNamespace = 'http://www.w3.org/2000/svg';
+    actionDefinitions.forEach(({ label, variant, href, paths }) => {
+      const link = pageDocument.createElement('a');
+      link.href = href;
+      link.target = '_top';
+      link.setAttribute('data-testid', `link-${variant}`);
+      link.className = `navbar-menu-action navbar-menu-action--${variant}`;
+=======
         label: 'Create Wallet',
         variant: 'wallet',
         paths: ['M3 7h18v13H3z', 'M3 10h18', 'M16 14h2'],
@@ -795,6 +956,7 @@ function preparePage(source: string) {
       button.disabled = true;
       button.title = `${label} coming soon`;
       button.className = `navbar-menu-action navbar-menu-action--${variant}`;
+>>>>>>> 8827e5a7436f220579f19b09b2332ff9398f0d28
 
       const icon = pageDocument.createElementNS(svgNamespace, 'svg');
       icon.setAttribute('viewBox', '0 0 24 24');
@@ -813,8 +975,13 @@ function preparePage(source: string) {
 
       const text = pageDocument.createElement('span');
       text.textContent = label;
+<<<<<<< HEAD
+      link.append(icon, text);
+      menuActions.appendChild(link);
+=======
       button.append(icon, text);
       menuActions.appendChild(button);
+>>>>>>> 8827e5a7436f220579f19b09b2332ff9398f0d28
     });
     navigation.appendChild(menuActions);
   }
@@ -930,11 +1097,21 @@ function preparePage(source: string) {
   return `<!doctype html>${pageDocument.documentElement.outerHTML}`;
 }
 
+<<<<<<< HEAD
+function AppContent() {
+  const [pageHtml, setPageHtml] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const [location] = useLocation();
+
+  useEffect(() => {
+    if (location !== '/') return;
+=======
 function App() {
   const [pageHtml, setPageHtml] = useState<string | null>(null);
   const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
+>>>>>>> 8827e5a7436f220579f19b09b2332ff9398f0d28
     let mounted = true;
 
     fetch('/wealthhub/index.html')
@@ -958,7 +1135,14 @@ function App() {
     return () => {
       mounted = false;
     };
+<<<<<<< HEAD
+  }, [location]);
+
+  if (location === '/login') return <AuthPage mode="login" />;
+  if (location === '/signup') return <AuthPage mode="signup" />;
+=======
   }, []);
+>>>>>>> 8827e5a7436f220579f19b09b2332ff9398f0d28
 
   if (loadError) {
     return <div role="alert">Unable to load the homepage content.</div>;
@@ -973,4 +1157,15 @@ function App() {
   );
 }
 
+<<<<<<< HEAD
+function App() {
+  return (
+    <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
+      <AppContent />
+    </WouterRouter>
+  );
+}
+
+=======
+>>>>>>> 8827e5a7436f220579f19b09b2332ff9398f0d28
 export default App;
