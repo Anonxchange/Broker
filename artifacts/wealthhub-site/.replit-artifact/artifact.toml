@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Wealth Hub"
+description = "The exported Wealth Hub trading-community homepage, preserved in its original design with the supplied images applied as layered hero backgrounds."
+version = "1.0.0"
+id = "artifacts/wealthhub-site"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 22188
+
+[services.development]
+run = "pnpm --filter @workspace/wealthhub-site run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/wealthhub-site", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/wealthhub-site/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22188"
+BASE_PATH = "/"
