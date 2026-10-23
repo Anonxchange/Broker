@@ -103,7 +103,7 @@ const heroBackgrounds = `
     width: 2rem;
     height: 2rem;
     place-items: center;
-    color: #d6b459;
+    color: #21a1ff;
     font-size: 1.75rem;
     line-height: 1;
   }
@@ -124,7 +124,11 @@ const heroBackgrounds = `
   }
 
   #pricing .investment-plan-card__rate {
-    color: #d6b459;
+    color: transparent;
+    background-image: linear-gradient(90deg, #21a1ff, #4d35ff);
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
     font-size: 2.125rem;
     font-weight: 700;
     line-height: 1.1;
@@ -156,10 +160,10 @@ const heroBackgrounds = `
     gap: 0.4rem;
     margin: 0.75rem 0 0;
     padding: 0.4rem 0.75rem;
-    border: 1px solid rgba(214, 180, 89, 0.22);
+    border: 1px solid rgba(33, 161, 255, 0.24);
     border-radius: 999px;
-    background: rgba(214, 180, 89, 0.08);
-    color: #d6b459;
+    background: rgba(33, 161, 255, 0.08);
+    color: #8ccfff;
     font-size: 0.8rem;
   }
 
@@ -168,10 +172,27 @@ const heroBackgrounds = `
     gap: 0.45rem;
     margin: 1.1rem 0 1.5rem;
     padding: 0;
+    width: max-content;
+    max-width: 100%;
     color: #aeb9c9;
     font-size: 0.9rem;
     line-height: 1.4;
     list-style: none;
+  }
+
+  #pricing .investment-plan-card__benefit {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.55rem;
+    text-align: left;
+  }
+
+  #pricing .investment-plan-card__check {
+    flex: none;
+    color: #22c55e;
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1.2;
   }
 
   #pricing .investment-plan-card__action {
@@ -185,11 +206,13 @@ const heroBackgrounds = `
     padding: 0.65rem 1.25rem;
     border: 0;
     border-radius: 999px;
-    background: linear-gradient(110deg, #e4c873 0%, #c89d3e 100%);
-    color: #111820;
+    background-image: linear-gradient(90deg, #21a1ff, #4d35ff);
+    color: #f4f7ff;
     font: inherit;
-    font-size: 0.9rem;
-    font-weight: 700;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
     opacity: 1;
     cursor: default;
   }
@@ -605,7 +628,14 @@ function renderInvestmentPlans(pageDocument: Document) {
       benefits.className = 'investment-plan-card__benefits';
       plan.benefits.forEach((benefit) => {
         const item = pageDocument.createElement('li');
-        item.textContent = `• ${benefit}`;
+        item.className = 'investment-plan-card__benefit';
+        const check = pageDocument.createElement('span');
+        check.className = 'investment-plan-card__check';
+        check.setAttribute('aria-hidden', 'true');
+        check.textContent = '✓';
+        const text = pageDocument.createElement('span');
+        text.textContent = benefit;
+        item.append(check, text);
         benefits.appendChild(item);
       });
 
