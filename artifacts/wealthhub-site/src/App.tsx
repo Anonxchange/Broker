@@ -73,6 +73,144 @@ const heroBackgrounds = `
     flex: none;
   }
 
+  #pricing .flex-2rem-wrap.investment-plan-grid {
+    display: grid !important;
+    width: 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: stretch;
+    gap: 1.5rem !important;
+    margin-top: 2rem;
+  }
+
+  #pricing .investment-plan-card {
+    box-sizing: border-box;
+    display: flex;
+    min-width: 0;
+    min-height: 27rem;
+    flex-direction: column;
+    align-items: center;
+    padding: 2rem 1.5rem 1.75rem;
+    border: 1px solid rgba(160, 182, 207, 0.16);
+    border-radius: 1.25rem;
+    background: linear-gradient(155deg, #0e1b2a 0%, #091421 100%);
+    box-shadow: 0 1.25rem 3rem rgba(0, 0, 0, 0.14);
+    color: #eef3fa;
+    text-align: center;
+  }
+
+  #pricing .investment-plan-card__icon {
+    display: grid;
+    width: 2rem;
+    height: 2rem;
+    place-items: center;
+    color: #d6b459;
+    font-size: 1.75rem;
+    line-height: 1;
+  }
+
+  #pricing .investment-plan-card__title {
+    margin: 1.25rem 0 0;
+    color: #f4f6fa;
+    font-size: 1.375rem;
+    font-weight: 650;
+    line-height: 1.3;
+  }
+
+  #pricing .investment-plan-card__return {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    margin: 0.65rem 0 0;
+  }
+
+  #pricing .investment-plan-card__rate {
+    color: #d6b459;
+    font-size: 2.125rem;
+    font-weight: 700;
+    line-height: 1.1;
+  }
+
+  #pricing .investment-plan-card__return-label {
+    color: #9aa8b9;
+    font-size: 0.875rem;
+  }
+
+  #pricing .investment-plan-card__amounts {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.5rem 0.9rem;
+    margin: 1rem 0 0;
+    color: #aeb9c9;
+    font-size: 0.875rem;
+  }
+
+  #pricing .investment-plan-card__amounts strong {
+    color: #f1f4f8;
+    font-weight: 600;
+  }
+
+  #pricing .investment-plan-card__duration {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0.75rem 0 0;
+    padding: 0.4rem 0.75rem;
+    border: 1px solid rgba(214, 180, 89, 0.22);
+    border-radius: 999px;
+    background: rgba(214, 180, 89, 0.08);
+    color: #d6b459;
+    font-size: 0.8rem;
+  }
+
+  #pricing .investment-plan-card__benefits {
+    display: grid;
+    gap: 0.45rem;
+    margin: 1.1rem 0 1.5rem;
+    padding: 0;
+    color: #aeb9c9;
+    font-size: 0.9rem;
+    line-height: 1.4;
+    list-style: none;
+  }
+
+  #pricing .investment-plan-card__action {
+    display: inline-flex;
+    min-height: 2.8rem;
+    min-width: 10.75rem;
+    align-items: center;
+    justify-content: center;
+    gap: 0.65rem;
+    margin-top: auto;
+    padding: 0.65rem 1.25rem;
+    border: 0;
+    border-radius: 999px;
+    background: linear-gradient(110deg, #e4c873 0%, #c89d3e 100%);
+    color: #111820;
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 700;
+    opacity: 1;
+    cursor: default;
+  }
+
+  #pricing .investment-plan-card__action:disabled {
+    opacity: 1;
+  }
+
+  #pricing .investment-plan-card__action-arrow {
+    font-size: 1.1rem;
+    line-height: 1;
+  }
+
+  #pricing .investment-plan-disclaimer {
+    margin: 1rem 0 0;
+    color: #95a2b3;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    text-align: center;
+  }
+
   @media screen and (max-width: 991px) {
     .navbar-menu.is-page-height-tablet {
       flex-direction: column !important;
@@ -90,6 +228,10 @@ const heroBackgrounds = `
       padding-top: 1.25rem;
       border-top: 1px solid rgba(255, 255, 255, 0.16);
     }
+
+    #pricing .flex-2rem-wrap.investment-plan-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -106,6 +248,19 @@ const heroBackgrounds = `
     .padding-hero-section {
       padding-top: 6.5rem !important;
     }
+
+    #pricing .flex-2rem-wrap.investment-plan-grid {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 1.1rem !important;
+    }
+
+    #pricing .investment-plan-card {
+      width: 100%;
+      max-width: 26rem;
+      min-height: 26rem;
+      margin: 0 auto;
+      padding: 2rem 1.25rem 1.5rem;
+    }
   }
 `;
 
@@ -116,6 +271,73 @@ const pageDescription =
 const contactEmailUser = 'support';
 const contactEmailDomain = 'aurevathinmarket.com';
 const contactEmail = `${contactEmailUser}@${contactEmailDomain}`;
+
+type InvestmentPlan = {
+  name: string;
+  icon: string;
+  rate: string;
+  minimum: string;
+  maximum: string;
+  duration: string;
+  benefits: string[];
+};
+
+const investmentPlans: InvestmentPlan[] = [
+  {
+    name: 'Stable Growth',
+    icon: '◇',
+    rate: '10%',
+    minimum: '$150',
+    maximum: '$6,500',
+    duration: '24 Hours',
+    benefits: ['Low risk profile', 'Fast returns', 'Perfect for beginners'],
+  },
+  {
+    name: 'Balanced Plus',
+    icon: '◈',
+    rate: '15%',
+    minimum: '$1,200',
+    maximum: '$15,000',
+    duration: '2 Days',
+    benefits: ['Moderate risk', 'Balanced returns', 'Diversified assets'],
+  },
+  {
+    name: 'Alpha Growth',
+    icon: '▣',
+    rate: '35%',
+    minimum: '$2,500',
+    maximum: '$30,000',
+    duration: '3 Days',
+    benefits: ['Higher returns', 'Premium support', 'Advanced strategies'],
+  },
+  {
+    name: 'Income Shield',
+    icon: '▥',
+    rate: '50%',
+    minimum: '$4,000',
+    maximum: '$45,000',
+    duration: '4 Days',
+    benefits: ['Maximum returns', 'VIP support', 'Premium strategies'],
+  },
+  {
+    name: 'Venture Catalyst',
+    icon: '↗',
+    rate: '20%',
+    minimum: '$1,500',
+    maximum: '$5,000',
+    duration: '24 Hours',
+    benefits: ['Holiday special', 'Quick returns', 'Limited time offer'],
+  },
+  {
+    name: 'ESG Future',
+    icon: '◉',
+    rate: '40%',
+    minimum: '$2,300',
+    maximum: '$15,000',
+    duration: '18 Hours',
+    benefits: ['Holiday special', 'Fastest returns', 'Limited time offer'],
+  },
+];
 
 const textReplacements: Record<string, string> = {
   'Trading Community': 'Markets',
@@ -308,6 +530,127 @@ const textReplacements: Record<string, string> = {
   'Wealth Hub and its affiliated services provide educational content only. We do not offer investment advice, portfolio management, or any other service requiring registration or licensing under financial regulations. Nothing on this website, in our Discord community, or within the Wealth Hub Archive constitutes a recommendation, solicitation, or offer to buy or sell any financial instrument. All information is general in nature and for informational purposes only. Users are solely responsible for their own investment decisions and should consult a licensed financial advisor or registered investment professional before acting on any material provided. Use of this site implies acceptance of our full terms and conditions and legal disclaimers.':
     'Investing involves risk, including the possible loss of principal. Asset availability, eligibility, and risks vary by product and jurisdiction. Information on this site is general and is not a personal recommendation. Review relevant product disclosures and consider speaking with a licensed professional before investing.',
 };
+
+function renderInvestmentPlans(pageDocument: Document) {
+  const pricingSection = pageDocument.querySelector('#pricing');
+  const cardsContainer = pricingSection?.querySelector<HTMLElement>(
+    '.central-flex-wrap > .flex-2rem-wrap',
+  );
+  const exploreMarketsButton = pricingSection?.querySelector(
+    '.header-wrap .main-button',
+  );
+
+  if (
+    !pricingSection ||
+    !cardsContainer ||
+    !exploreMarketsButton?.textContent?.includes('Explore Markets')
+  ) {
+    throw new Error(
+      'The pricing section or its Explore Markets button was not found.',
+    );
+  }
+
+  cardsContainer.classList.add('investment-plan-grid');
+  cardsContainer.replaceChildren(
+    ...investmentPlans.map((plan, index) => {
+      const card = pageDocument.createElement('article');
+      card.className = 'investment-plan-card';
+
+      const heading = pageDocument.createElement('h3');
+      heading.className = 'investment-plan-card__title';
+      heading.id = `investment-plan-${index + 1}`;
+      heading.textContent = plan.name;
+      card.setAttribute('aria-labelledby', heading.id);
+
+      const icon = pageDocument.createElement('span');
+      icon.className = 'investment-plan-card__icon';
+      icon.setAttribute('aria-hidden', 'true');
+      icon.textContent = plan.icon;
+
+      const returnDetails = pageDocument.createElement('p');
+      returnDetails.className = 'investment-plan-card__return';
+      const rate = pageDocument.createElement('span');
+      rate.className = 'investment-plan-card__rate';
+      rate.textContent = plan.rate;
+      const returnLabel = pageDocument.createElement('span');
+      returnLabel.className = 'investment-plan-card__return-label';
+      returnLabel.textContent = 'Profit Return';
+      returnDetails.append(rate, returnLabel);
+
+      const amounts = pageDocument.createElement('p');
+      amounts.className = 'investment-plan-card__amounts';
+      const minimum = pageDocument.createElement('span');
+      minimum.append('Min ');
+      const minimumAmount = pageDocument.createElement('strong');
+      minimumAmount.textContent = plan.minimum;
+      minimum.appendChild(minimumAmount);
+      const separator = pageDocument.createElement('span');
+      separator.setAttribute('aria-hidden', 'true');
+      separator.textContent = '|';
+      const maximum = pageDocument.createElement('span');
+      maximum.append('Max ');
+      const maximumAmount = pageDocument.createElement('strong');
+      maximumAmount.textContent = plan.maximum;
+      maximum.appendChild(maximumAmount);
+      amounts.append(minimum, separator, maximum);
+
+      const duration = pageDocument.createElement('p');
+      duration.className = 'investment-plan-card__duration';
+      const timer = pageDocument.createElement('span');
+      timer.setAttribute('aria-hidden', 'true');
+      timer.textContent = '⏱️';
+      duration.append(timer, pageDocument.createTextNode(plan.duration));
+
+      const benefits = pageDocument.createElement('ul');
+      benefits.className = 'investment-plan-card__benefits';
+      plan.benefits.forEach((benefit) => {
+        const item = pageDocument.createElement('li');
+        item.textContent = `• ${benefit}`;
+        benefits.appendChild(item);
+      });
+
+      const action = pageDocument.createElement('button');
+      action.type = 'button';
+      action.className = 'investment-plan-card__action';
+      action.disabled = true;
+      action.title = 'Investment action is not available yet';
+      action.setAttribute(
+        'aria-label',
+        `Invest Now in ${plan.name}; investment action is not available yet`,
+      );
+      const actionText = pageDocument.createElement('span');
+      actionText.textContent = 'Invest Now';
+      const actionArrow = pageDocument.createElement('span');
+      actionArrow.className = 'investment-plan-card__action-arrow';
+      actionArrow.setAttribute('aria-hidden', 'true');
+      actionArrow.textContent = '→';
+      action.append(actionText, actionArrow);
+
+      card.append(
+        icon,
+        heading,
+        returnDetails,
+        amounts,
+        duration,
+        benefits,
+        action,
+      );
+      return card;
+    }),
+  );
+
+  const disclaimer = pageDocument.createElement('p');
+  disclaimer.className = 'investment-plan-disclaimer';
+  disclaimer.textContent =
+    'Product availability and terms vary. Review product information before investing.';
+  cardsContainer.after(disclaimer);
+
+  if (!pricingSection.contains(exploreMarketsButton)) {
+    throw new Error(
+      'The Explore Markets button must remain in the pricing section.',
+    );
+  }
+}
 
 function preparePage(source: string) {
   const pageDocument = new DOMParser().parseFromString(source, 'text/html');
@@ -547,6 +890,8 @@ function preparePage(source: string) {
       // Keep the original structured data if the export is not valid JSON.
     }
   }
+
+  renderInvestmentPlans(pageDocument);
 
   const backgroundStyle = pageDocument.createElement('style');
   backgroundStyle.textContent = heroBackgrounds;
