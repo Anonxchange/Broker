@@ -210,6 +210,42 @@ function preparePage(source: string) {
   base.href = '/wealthhub/';
   pageDocument.head.prepend(base);
 
+  const logo = pageDocument.querySelector('.logo-link svg');
+  if (logo) {
+    Array.from(logo.querySelectorAll('path'))
+      .slice(4)
+      .forEach((path) => path.remove());
+
+    const wordmark = pageDocument.createElementNS(
+      'http://www.w3.org/2000/svg',
+      'text',
+    );
+    wordmark.setAttribute('x', '33.8');
+    wordmark.setAttribute('y', '20.5');
+    wordmark.setAttribute('font-family', 'Ppmori, sans-serif');
+    wordmark.setAttribute('font-size', '16');
+    wordmark.setAttribute('font-weight', '600');
+    wordmark.setAttribute('textLength', '134');
+    wordmark.setAttribute('lengthAdjust', 'spacingAndGlyphs');
+
+    const firstWord = pageDocument.createElementNS(
+      'http://www.w3.org/2000/svg',
+      'tspan',
+    );
+    firstWord.setAttribute('fill', '#D6E8FF');
+    firstWord.textContent = 'Auvrenthia ';
+
+    const secondWord = pageDocument.createElementNS(
+      'http://www.w3.org/2000/svg',
+      'tspan',
+    );
+    secondWord.setAttribute('fill', '#205CF2');
+    secondWord.textContent = 'Markets';
+
+    wordmark.append(firstWord, secondWord);
+    logo.appendChild(wordmark);
+  }
+
   pageDocument.title = pageTitle;
   pageDocument
     .querySelectorAll(
