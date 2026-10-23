@@ -1,7 +1,12 @@
 kind = "web"
 previewPath = "/"
+<<<<<<< HEAD
+title = "Auvrenthia Markets"
+description = "A multi-asset investment website where visitors can explore market categories and product information, then create an account or sign in to continue."
+=======
 title = "Wealth Hub"
 description = "The exported Wealth Hub trading-community homepage, preserved in its original design with the supplied images applied as layered hero backgrounds."
+>>>>>>> 8827e5a7436f220579f19b09b2332ff9398f0d28
 version = "1.0.0"
 id = "artifacts/wealthhub-site"
 router = "path"
