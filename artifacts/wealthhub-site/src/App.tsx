@@ -7,6 +7,20 @@ const heroBackgrounds = `
     background-position: right center, center center;
     background-size: min(40vw, 500px) auto, cover;
   }
+
+  .w-webflow-badge {
+    display: none !important;
+  }
+
+  @media screen and (max-width: 767px) {
+    .logo-link svg text {
+      font-size: 20px !important;
+    }
+
+    .padding-hero-section {
+      padding-top: 5rem !important;
+    }
+  }
 `;
 
 const pageTitle = 'Auvrenthia Markets | Multi-Asset Investment Broker';
