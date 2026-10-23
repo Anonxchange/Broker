@@ -42,7 +42,8 @@ const textReplacements: Record<string, string> = {
   'Join the team': 'Get in touch',
   Articles: 'Market Insights',
   '🚀 Thriving Trading Community': 'Multi-Asset Investment Platform',
-  'Wealth Hub - Where Traders Unite for': 'Auvrenthia Markets — Explore',
+  'Wealth Hub - Where Traders Unite for':
+    'Auvrenthia, Building the Future of Digital Finance',
   'Join a vibrant community where traders collaborate and share insights. Together, we empower each other to achieve financial success.':
     'Explore opportunities across crypto, forex, agriculture, real estate, stocks, commodities, and more from one investment platform.',
   Confidence: 'Crypto',
