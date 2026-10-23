@@ -1,9 +1,6 @@
 import { useEffect, useState } from 'react';
-<<<<<<< HEAD
 import { Router as WouterRouter, useLocation } from 'wouter';
 import AuthPage from './pages/AuthPage';
-=======
->>>>>>> 8827e5a7436f220579f19b09b2332ff9398f0d28
 
 const heroBackgrounds = `
   .section-header {
@@ -38,19 +35,14 @@ const heroBackgrounds = `
   }
 
   .navbar-menu-actions {
-<<<<<<< HEAD
     display: flex;
     align-items: center;
     gap: 0.5rem;
     margin-left: 0.35rem;
-=======
-    display: none;
->>>>>>> 8827e5a7436f220579f19b09b2332ff9398f0d28
   }
 
   .navbar-menu-action {
     box-sizing: border-box;
-<<<<<<< HEAD
     display: inline-flex;
     min-height: 2.5rem;
     align-items: center;
@@ -170,43 +162,6 @@ const heroBackgrounds = `
     align-items: center;
   }
 
-=======
-    display: flex;
-    min-height: 3rem;
-    width: 100%;
-    align-items: center;
-    justify-content: center;
-    gap: 0.625rem;
-    border: 1px solid #354256;
-    border-radius: 0.375rem;
-    padding: 0.75rem 1rem;
-    background: transparent;
-    color: #edf2f8;
-    font: inherit;
-    font-size: 1rem;
-    font-weight: 500;
-    opacity: 1;
-    cursor: default;
-  }
-
-  .navbar-menu-action:disabled {
-    opacity: 1;
-  }
-
-  .navbar-menu-action--wallet {
-    border-color: #d6b459;
-    background: #d6b459;
-    color: #101722;
-    font-weight: 600;
-  }
-
-  .navbar-menu-action-icon {
-    width: 1.125rem;
-    height: 1.125rem;
-    flex: none;
-  }
-
->>>>>>> 8827e5a7436f220579f19b09b2332ff9398f0d28
   #pricing .flex-2rem-wrap.investment-plan-grid {
     display: grid !important;
     width: 100%;
@@ -755,11 +710,7 @@ function renderInvestmentPlans(pageDocument: Document) {
       duration.className = 'investment-plan-card__duration';
       const timer = pageDocument.createElement('span');
       timer.setAttribute('aria-hidden', 'true');
-<<<<<<< HEAD
       timer.textContent = 'Duration: ';
-=======
-      timer.textContent = '⏱️';
->>>>>>> 8827e5a7436f220579f19b09b2332ff9398f0d28
       duration.append(timer, pageDocument.createTextNode(plan.duration));
 
       const benefits = pageDocument.createElement('ul');
@@ -886,10 +837,7 @@ function preparePage(source: string) {
     .forEach((meta) => meta.setAttribute('content', pageTitle));
 
   pageDocument.querySelector('.page-wrapper')?.setAttribute('id', 'home');
-<<<<<<< HEAD
   pageDocument.querySelector<HTMLAnchorElement>('.logo-link')?.setAttribute('href', '/');
-=======
->>>>>>> 8827e5a7436f220579f19b09b2332ff9398f0d28
   const navigation = pageDocument.querySelector('.navbar-menu');
   if (navigation) {
     const navigationItems = [
@@ -918,10 +866,7 @@ function preparePage(source: string) {
       {
         label: 'Login',
         variant: 'login',
-<<<<<<< HEAD
         href: '/login',
-=======
->>>>>>> 8827e5a7436f220579f19b09b2332ff9398f0d28
         paths: [
           'M10 17l5-5-5-5',
           'M15 12H3',
@@ -929,7 +874,6 @@ function preparePage(source: string) {
         ],
       },
       {
-<<<<<<< HEAD
         label: 'Sign up',
         variant: 'signup',
         href: '/signup',
@@ -943,20 +887,6 @@ function preparePage(source: string) {
       link.target = '_top';
       link.setAttribute('data-testid', `link-${variant}`);
       link.className = `navbar-menu-action navbar-menu-action--${variant}`;
-=======
-        label: 'Create Wallet',
-        variant: 'wallet',
-        paths: ['M3 7h18v13H3z', 'M3 10h18', 'M16 14h2'],
-      },
-    ];
-    const svgNamespace = 'http://www.w3.org/2000/svg';
-    actionDefinitions.forEach(({ label, variant, paths }) => {
-      const button = pageDocument.createElement('button');
-      button.type = 'button';
-      button.disabled = true;
-      button.title = `${label} coming soon`;
-      button.className = `navbar-menu-action navbar-menu-action--${variant}`;
->>>>>>> 8827e5a7436f220579f19b09b2332ff9398f0d28
 
       const icon = pageDocument.createElementNS(svgNamespace, 'svg');
       icon.setAttribute('viewBox', '0 0 24 24');
@@ -975,13 +905,8 @@ function preparePage(source: string) {
 
       const text = pageDocument.createElement('span');
       text.textContent = label;
-<<<<<<< HEAD
       link.append(icon, text);
       menuActions.appendChild(link);
-=======
-      button.append(icon, text);
-      menuActions.appendChild(button);
->>>>>>> 8827e5a7436f220579f19b09b2332ff9398f0d28
     });
     navigation.appendChild(menuActions);
   }
@@ -1097,7 +1022,6 @@ function preparePage(source: string) {
   return `<!doctype html>${pageDocument.documentElement.outerHTML}`;
 }
 
-<<<<<<< HEAD
 function AppContent() {
   const [pageHtml, setPageHtml] = useState<string | null>(null);
   const [loadError, setLoadError] = useState(false);
@@ -1105,13 +1029,6 @@ function AppContent() {
 
   useEffect(() => {
     if (location !== '/') return;
-=======
-function App() {
-  const [pageHtml, setPageHtml] = useState<string | null>(null);
-  const [loadError, setLoadError] = useState(false);
-
-  useEffect(() => {
->>>>>>> 8827e5a7436f220579f19b09b2332ff9398f0d28
     let mounted = true;
 
     fetch('/wealthhub/index.html')
@@ -1135,14 +1052,10 @@ function App() {
     return () => {
       mounted = false;
     };
-<<<<<<< HEAD
   }, [location]);
 
   if (location === '/login') return <AuthPage mode="login" />;
   if (location === '/signup') return <AuthPage mode="signup" />;
-=======
-  }, []);
->>>>>>> 8827e5a7436f220579f19b09b2332ff9398f0d28
 
   if (loadError) {
     return <div role="alert">Unable to load the homepage content.</div>;
@@ -1157,7 +1070,6 @@ function App() {
   );
 }
 
-<<<<<<< HEAD
 function App() {
   return (
     <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
@@ -1166,6 +1078,4 @@ function App() {
   );
 }
 
-=======
->>>>>>> 8827e5a7436f220579f19b09b2332ff9398f0d28
 export default App;
