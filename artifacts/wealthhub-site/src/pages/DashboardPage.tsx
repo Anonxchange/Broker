@@ -80,6 +80,9 @@ function buildDashboardDocument() {
     .profile-dropdown[hidden] {
       display: none;
     }
+    .profile-dropdown__view[hidden] {
+      display: none;
+    }
     .profile-dropdown__identity {
       display: flex;
       align-items: center;
@@ -122,6 +125,13 @@ function buildDashboardDocument() {
       font-size: 14px;
       text-align: left;
     }
+    .profile-dropdown button svg {
+      width: 18px;
+      height: 18px;
+      flex: none;
+      margin-right: 10px;
+      color: var(--mute);
+    }
     .profile-dropdown button:hover,
     .profile-dropdown button:focus-visible {
       background: color-mix(in srgb, var(--brand) 10%, transparent);
@@ -130,6 +140,12 @@ function buildDashboardDocument() {
       height: 1px;
       margin: 5px 0;
       background: var(--line);
+    }
+    .profile-dropdown__empty {
+      margin: 0;
+      padding: 14px 10px 10px;
+      color: var(--mute);
+      font-size: 13px;
     }
   `;
   const profileMenuControl = `
@@ -144,14 +160,25 @@ function buildDashboardDocument() {
       profileMenu.className="profile-dropdown";
       profileMenu.setAttribute("role","menu");
       profileMenu.hidden=true;
-      profileMenu.innerHTML='<div class="profile-dropdown__identity"><span class="profile-dropdown__initial" aria-hidden="true">A</span><div><strong>Profile</strong><small>Manage your account</small></div></div><button type="button" role="menuitem" data-profile-action="settings">Account settings</button><button type="button" role="menuitem" data-profile-action="statements">Statements and tax</button><button type="button" role="menuitem" data-profile-action="rewards">Rewards</button><div class="profile-dropdown__divider"></div><button type="button" role="menuitem" data-profile-action="signout">Sign out</button>';
+      profileMenu.innerHTML='<div class="profile-dropdown__view" data-profile-view="menu"><div class="profile-dropdown__identity"><span class="profile-dropdown__initial" aria-hidden="true">A</span><div><strong>Profile</strong><small>Manage your account</small></div></div><button type="button" role="menuitem" data-profile-action="notifications"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 20a2 2 0 0 0 4 0"/></svg><span>Notifications</span></button><button type="button" role="menuitem" data-profile-action="settings">Account settings</button><button type="button" role="menuitem" data-profile-action="statements">Statements and tax</button><button type="button" role="menuitem" data-profile-action="rewards">Rewards</button><div class="profile-dropdown__divider"></div><button type="button" role="menuitem" data-profile-action="signout">Sign out</button></div><div class="profile-dropdown__view" data-profile-view="notifications" hidden><button type="button" role="menuitem" data-profile-action="back"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6M9 12h11"/></svg><span>Back to profile menu</span></button><p class="profile-dropdown__empty">No new notifications.</p></div>';
       const profileInitial=profileMenu.querySelector(".profile-dropdown__initial");
       if(profileInitial&&memberAvatar.textContent.trim())profileInitial.textContent=memberAvatar.textContent.trim();
       profileControl.appendChild(profileMenu);
+      const profileMenuView=profileMenu.querySelector('[data-profile-view="menu"]');
+      const notificationsView=profileMenu.querySelector('[data-profile-view="notifications"]');
+      const resetProfileMenuView=()=>{
+        profileMenuView.hidden=false;
+        notificationsView.hidden=true;
+      };
 
       const setProfileMenuOpen=open=>{
         profileMenu.hidden=!open;
         memberAvatar.setAttribute("aria-expanded",String(open));
+      };
+      const toggleProfileMenu=()=>{
+        const open=profileMenu.hidden;
+        if(open)resetProfileMenuView();
+        setProfileMenuOpen(open);
       };
       memberAvatar.setAttribute("role","button");
       memberAvatar.setAttribute("tabindex","0");
@@ -161,19 +188,31 @@ function buildDashboardDocument() {
       memberAvatar.title="Profile and account settings";
       memberAvatar.addEventListener("click",event=>{
         event.stopPropagation();
-        setProfileMenuOpen(profileMenu.hidden);
+        toggleProfileMenu();
       });
       memberAvatar.addEventListener("keydown",event=>{
         if(event.key==="Enter"||event.key===" "){
           event.preventDefault();
-          setProfileMenuOpen(profileMenu.hidden);
+          toggleProfileMenu();
         }
-        if(event.key==="ArrowDown"){event.preventDefault();setProfileMenuOpen(true);profileMenu.querySelector("button")?.focus()}
+        if(event.key==="ArrowDown"){event.preventDefault();resetProfileMenuView();setProfileMenuOpen(true);profileMenu.querySelector('[data-profile-action="notifications"]')?.focus()}
       });
       profileMenu.addEventListener("click",event=>{
         const action=event.target.closest("[data-profile-action]");
         if(!action)return;
         event.stopPropagation();
+        if(action.dataset.profileAction==="notifications"){
+          profileMenuView.hidden=true;
+          notificationsView.hidden=false;
+          notificationsView.querySelector("button")?.focus();
+          return;
+        }
+        if(action.dataset.profileAction==="back"){
+          notificationsView.hidden=true;
+          profileMenuView.hidden=false;
+          profileMenu.querySelector('[data-profile-action="notifications"]')?.focus();
+          return;
+        }
         setProfileMenuOpen(false);
         if(action.dataset.profileAction==="signout"){
           window.parent.postMessage({type:"auvrenthia-member-logout"},"*");
