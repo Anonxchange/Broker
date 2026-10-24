@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Router as WouterRouter, useLocation } from 'wouter';
 import AuthPage from './pages/AuthPage';
+import DashboardPage from './pages/DashboardPage';
 
 const heroBackgrounds = `
   .section-header {
@@ -1596,10 +1597,44 @@ function preparePage(source: string) {
   return `<!doctype html>${pageDocument.documentElement.outerHTML}`;
 }
 
+const DEMO_SESSION_KEY = 'auvrenthia-dashboard-preview';
+
+function readDemoSession() {
+  try {
+    return (
+      typeof window !== 'undefined' &&
+      window.sessionStorage.getItem(DEMO_SESSION_KEY) === 'active'
+    );
+  } catch {
+    return false;
+  }
+}
+
 function AppContent() {
   const [pageHtml, setPageHtml] = useState<string | null>(null);
   const [loadError, setLoadError] = useState(false);
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
+  const [hasDemoSession, setHasDemoSession] = useState(readDemoSession);
+
+  function startDemoSession() {
+    try {
+      window.sessionStorage.setItem(DEMO_SESSION_KEY, 'active');
+    } catch {
+      // Keep this preview usable when browser storage is disabled.
+    }
+    setHasDemoSession(true);
+    setLocation(location.startsWith('/dashboard') ? location : '/dashboard');
+  }
+
+  function endDemoSession() {
+    try {
+      window.sessionStorage.removeItem(DEMO_SESSION_KEY);
+    } catch {
+      // The in-memory session still ends if browser storage is disabled.
+    }
+    setHasDemoSession(false);
+    setLocation('/');
+  }
 
   useEffect(() => {
     if (location !== '/') return;
@@ -1628,8 +1663,15 @@ function AppContent() {
     };
   }, [location]);
 
-  if (location === '/login') return <AuthPage mode="login" />;
-  if (location === '/signup') return <AuthPage mode="signup" />;
+  if (location === '/login')
+    return <AuthPage mode="login" onDemoAccess={startDemoSession} />;
+  if (location === '/signup')
+    return <AuthPage mode="signup" onDemoAccess={startDemoSession} />;
+  if (location === '/dashboard' || location === '/dashboard/profile') {
+    if (!hasDemoSession)
+      return <AuthPage mode="login" onDemoAccess={startDemoSession} />;
+    return <DashboardPage onLogout={endDemoSession} />;
+  }
 
   if (loadError) {
     return <div role="alert">Unable to load the homepage content.</div>;
