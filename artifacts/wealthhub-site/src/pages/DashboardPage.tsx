@@ -28,30 +28,205 @@ function buildDashboardDocument() {
       font-weight: 400;
       line-height: 1.5;
     }
-    .logo .dashboard-brand-mark,
-    #title .dashboard-brand-mark {
+    .logo .dashboard-brand-mark {
       display: block;
       width: 171px;
       max-width: 100%;
       height: auto;
     }
+    #title .dashboard-brand-mark {
+      display: block;
+      width: 26px;
+      max-width: 26px;
+      height: 26px;
+      object-fit: cover;
+      object-position: left center;
+    }
     #title {
       display: flex;
       min-width: 0;
       align-items: center;
+      flex: 0 1 auto;
+      margin-right: auto;
+    }
+    .top {
+      width: 100%;
+      justify-content: flex-start;
+    }
+    .profile-control {
+      position: relative;
+      z-index: 30;
+      flex: none;
+    }
+    .profile-control .av {
+      cursor: pointer;
+    }
+    .profile-control .av:focus-visible {
+      outline: 2px solid var(--brand);
+      outline-offset: 3px;
+    }
+    .profile-dropdown {
+      position: absolute;
+      top: calc(100% + 10px);
+      right: 0;
+      z-index: 50;
+      width: min(260px, calc(100vw - 36px));
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--bg);
+      box-shadow: 0 18px 44px rgba(4, 12, 35, 0.2);
+    }
+    .profile-dropdown[hidden] {
+      display: none;
+    }
+    .profile-dropdown__view[hidden] {
+      display: none;
+    }
+    .profile-dropdown__identity {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      padding: 9px 10px 12px;
+      margin-bottom: 5px;
+      border-bottom: 1px solid var(--line);
+    }
+    .profile-dropdown__initial {
+      display: grid;
+      width: 36px;
+      height: 36px;
+      flex: none;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--ink);
+      color: var(--bg);
+      font-size: 14px;
+      font-weight: 800;
+    }
+    .profile-dropdown__identity strong,
+    .profile-dropdown__identity small {
+      display: block;
+    }
+    .profile-dropdown__identity strong {
+      color: var(--ink);
+      font-size: 14px;
+    }
+    .profile-dropdown__identity small {
+      color: var(--mute);
+      font-size: 12px;
+    }
+    .profile-dropdown button {
+      display: flex;
+      width: 100%;
+      align-items: center;
+      padding: 10px;
+      border-radius: 8px;
+      color: var(--ink);
+      font-size: 14px;
+      text-align: left;
+    }
+    .profile-dropdown button svg {
+      width: 18px;
+      height: 18px;
+      flex: none;
+      margin-right: 10px;
+      color: var(--mute);
+    }
+    .profile-dropdown button:hover,
+    .profile-dropdown button:focus-visible {
+      background: color-mix(in srgb, var(--brand) 10%, transparent);
+    }
+    .profile-dropdown__divider {
+      height: 1px;
+      margin: 5px 0;
+      background: var(--line);
+    }
+    .profile-dropdown__empty {
+      margin: 0;
+      padding: 14px 10px 10px;
+      color: var(--mute);
+      font-size: 13px;
     }
   `;
-  const logoutControl = `
-    const memberAvatar=document.querySelector(".av");
+  const profileMenuControl = `
+    const memberAvatar=document.querySelector(".top .av");
     if(memberAvatar){
+      const profileControl=document.createElement("div");
+      profileControl.className="profile-control";
+      memberAvatar.parentNode.insertBefore(profileControl,memberAvatar);
+      profileControl.appendChild(memberAvatar);
+
+      const profileMenu=document.createElement("div");
+      profileMenu.className="profile-dropdown";
+      profileMenu.setAttribute("role","menu");
+      profileMenu.hidden=true;
+      profileMenu.innerHTML='<div class="profile-dropdown__view" data-profile-view="menu"><div class="profile-dropdown__identity"><span class="profile-dropdown__initial" aria-hidden="true">A</span><div><strong>Profile</strong><small>Manage your account</small></div></div><button type="button" role="menuitem" data-profile-action="notifications"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 20a2 2 0 0 0 4 0"/></svg><span>Notifications</span></button><button type="button" role="menuitem" data-profile-action="settings">Account settings</button><button type="button" role="menuitem" data-profile-action="statements">Statements and tax</button><button type="button" role="menuitem" data-profile-action="rewards">Rewards</button><div class="profile-dropdown__divider"></div><button type="button" role="menuitem" data-profile-action="signout">Sign out</button></div><div class="profile-dropdown__view" data-profile-view="notifications" hidden><button type="button" role="menuitem" data-profile-action="back"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6M9 12h11"/></svg><span>Back to profile menu</span></button><p class="profile-dropdown__empty">No new notifications.</p></div>';
+      const profileInitial=profileMenu.querySelector(".profile-dropdown__initial");
+      if(profileInitial&&memberAvatar.textContent.trim())profileInitial.textContent=memberAvatar.textContent.trim();
+      profileControl.appendChild(profileMenu);
+      const profileMenuView=profileMenu.querySelector('[data-profile-view="menu"]');
+      const notificationsView=profileMenu.querySelector('[data-profile-view="notifications"]');
+      const resetProfileMenuView=()=>{
+        profileMenuView.hidden=false;
+        notificationsView.hidden=true;
+      };
+
+      const setProfileMenuOpen=open=>{
+        profileMenu.hidden=!open;
+        memberAvatar.setAttribute("aria-expanded",String(open));
+      };
+      const toggleProfileMenu=()=>{
+        const open=profileMenu.hidden;
+        if(open)resetProfileMenuView();
+        setProfileMenuOpen(open);
+      };
       memberAvatar.setAttribute("role","button");
       memberAvatar.setAttribute("tabindex","0");
-      memberAvatar.setAttribute("aria-label","Sign out");
-      memberAvatar.title="Sign out";
-      const requestLogout=()=>window.parent.postMessage({type:"auvrenthia-member-logout"},"*");
-      memberAvatar.addEventListener("click",requestLogout);
+      memberAvatar.setAttribute("aria-label","Open profile menu");
+      memberAvatar.setAttribute("aria-haspopup","menu");
+      memberAvatar.setAttribute("aria-expanded","false");
+      memberAvatar.title="Profile and account settings";
+      memberAvatar.addEventListener("click",event=>{
+        event.stopPropagation();
+        toggleProfileMenu();
+      });
       memberAvatar.addEventListener("keydown",event=>{
-        if(event.key==="Enter"||event.key===" "){event.preventDefault();requestLogout()}
+        if(event.key==="Enter"||event.key===" "){
+          event.preventDefault();
+          toggleProfileMenu();
+        }
+        if(event.key==="ArrowDown"){event.preventDefault();resetProfileMenuView();setProfileMenuOpen(true);profileMenu.querySelector('[data-profile-action="notifications"]')?.focus()}
+      });
+      profileMenu.addEventListener("click",event=>{
+        const action=event.target.closest("[data-profile-action]");
+        if(!action)return;
+        event.stopPropagation();
+        if(action.dataset.profileAction==="notifications"){
+          profileMenuView.hidden=true;
+          notificationsView.hidden=false;
+          notificationsView.querySelector("button")?.focus();
+          return;
+        }
+        if(action.dataset.profileAction==="back"){
+          notificationsView.hidden=true;
+          profileMenuView.hidden=false;
+          profileMenu.querySelector('[data-profile-action="notifications"]')?.focus();
+          return;
+        }
+        setProfileMenuOpen(false);
+        if(action.dataset.profileAction==="signout"){
+          window.parent.postMessage({type:"auvrenthia-member-logout"},"*");
+          return;
+        }
+        const destinations={settings:"Security and verification",statements:"Statements and tax",rewards:"Rewards"};
+        const destination=destinations[action.dataset.profileAction];
+        if(destination)document.querySelector('#nav .nav[data-p="'+destination+'"]')?.click();
+      });
+      document.addEventListener("click",event=>{
+        if(!profileControl.contains(event.target))setProfileMenuOpen(false);
+      });
+      document.addEventListener("keydown",event=>{
+        if(event.key==="Escape"){setProfileMenuOpen(false);memberAvatar.focus()}
       });
     }
   `;
@@ -61,7 +236,7 @@ function buildDashboardDocument() {
       if(!dashboardTitle||dashboardTitle.querySelector("[data-dashboard-brand]"))return;
       const logo=document.createElement("img");
       logo.src="/wealthhub/auvrenthia-logo.svg";
-      logo.alt="Auvrenthia Markets";
+      logo.alt="Auvrenthia";
       logo.className="dashboard-brand-mark";
       logo.setAttribute("data-dashboard-brand","");
       dashboardTitle.replaceChildren(logo);
@@ -74,6 +249,10 @@ function buildDashboardDocument() {
     .replace(
       '<div class="logo">Harbor</div>',
       '<div class="logo"><img src="/wealthhub/auvrenthia-logo.svg" alt="Auvrenthia Markets" class="dashboard-brand-mark" /></div>',
+    )
+    .replace(
+      /<button class="ic" aria-label="Notifications">[\s\S]*?<\/button>/,
+      '',
     )
     .replace(
       /<link rel="stylesheet" href="https:\/\/fonts\.googleapis\.com\/[^"]+">/,
@@ -94,7 +273,7 @@ function buildDashboardDocument() {
     )
     .replace(
       /async function loadCrypto\(\)\{[\s\S]*?\nfunction lg/,
-      'async function loadCrypto(){await Promise.all([loadPublic("Stocks"),loadPublic("ETFs"),loadPublic("Crypto"),loadPublic("Forex"),loadPublic("Commodities")])}\nfunction lg',
+      'async function loadCrypto(){await Promise.all([loadPublic("Stocks"),loadPublic("ETFs"),loadPublic("Crypto"),loadPublic("Forex"),loadPublic("Commodities")])}\nconst MARKET_ICONS=Object.create(null),MARKET_STATUS=Object.create(null),MARKET_META=Object.create(null);\nfunction lg',
     )
     .replace(
       /async function loadPublic\(\)\{[\s\S]*?\}\ntickRender\(\);/,
@@ -159,7 +338,7 @@ function buildDashboardDocument() {
     .replace('</head>', `<style>${wealthHubTypography}</style></head>`)
     .replace(
       '</body>',
-      `<script>${logoutControl}${headerLogoControl}</script></body>`,
+      `<script>${profileMenuControl}${headerLogoControl}</script></body>`,
     );
 
   const darkMode = document.documentElement.classList.contains('dark');
