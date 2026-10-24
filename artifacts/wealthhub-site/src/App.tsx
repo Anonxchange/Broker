@@ -323,6 +323,187 @@ const heroBackgrounds = `
     text-align: center;
   }
 
+  .investor-testimonials {
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+  }
+
+  .investor-testimonials__header {
+    margin-bottom: 1.25rem;
+  }
+
+  .investor-testimonials__eyebrow {
+    color: #21a1ff !important;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .investor-testimonials__title {
+    margin-top: 0.65rem !important;
+    color: #d6e8ff !important;
+    font-size: 1.9rem !important;
+    line-height: 1.1 !important;
+  }
+
+  .investor-testimonials__intro {
+    margin-top: 0.75rem !important;
+    color: rgba(214, 232, 255, 0.68) !important;
+    font-size: 0.9rem;
+    line-height: 1.65;
+  }
+
+  .section-strategies .investor-testimonial-product-row {
+    display: grid !important;
+    width: 100%;
+    grid-template-columns: minmax(0, 1.8fr) minmax(15rem, 0.75fr);
+    align-items: start;
+    gap: 2rem !important;
+  }
+
+  .section-strategies .investor-testimonial-product-row > .price-box {
+    justify-self: end;
+  }
+
+  .investor-testimonials__track {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: calc((100% - 1rem) / 2);
+    align-items: stretch;
+    gap: 1rem;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    padding-bottom: 0.35rem;
+    scroll-behavior: smooth;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .investor-testimonials__track::-webkit-scrollbar {
+    display: none;
+  }
+
+  .investor-testimonial {
+    box-sizing: border-box;
+    min-width: 0;
+    min-height: 17rem;
+    padding: 1.35rem;
+    border: 1px solid rgba(210, 213, 226, 0.16);
+    border-radius: 1.25rem;
+    background: linear-gradient(
+      155deg,
+      rgba(14, 41, 109, 0.3) 0%,
+      rgba(12, 12, 12, 0.94) 100%
+    );
+    scroll-snap-align: start;
+  }
+
+  .investor-testimonial__author {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+  }
+
+  .investor-testimonial__portrait {
+    display: block;
+    width: 3.5rem;
+    height: 3.5rem;
+    flex: none;
+    border: 1px solid rgba(214, 232, 255, 0.22);
+    border-radius: 50%;
+    object-fit: cover;
+    background: #0e296d;
+  }
+
+  .investor-testimonial__name {
+    color: #d6e8ff !important;
+    font-size: 0.95rem;
+    font-weight: 600;
+    line-height: 1.4;
+  }
+
+  .investor-testimonial__country {
+    display: block;
+    margin-top: 0.2rem;
+    color: rgba(214, 232, 255, 0.6) !important;
+    font-size: 0.8rem;
+    line-height: 1.4;
+  }
+
+  .investor-testimonial__quote {
+    position: relative;
+    margin: 1.2rem 0 0 !important;
+    padding: 1rem 0 0 !important;
+    border: 0 !important;
+    color: rgba(214, 232, 255, 0.78) !important;
+    font-size: 0.92rem !important;
+    line-height: 1.7 !important;
+  }
+
+  .investor-testimonial__quote::before {
+    position: absolute;
+    top: -0.1rem;
+    left: 0;
+    color: #21a1ff;
+    content: "“";
+    font-size: 2rem;
+    line-height: 1;
+  }
+
+  .investor-testimonials__controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 0.85rem;
+  }
+
+  .investor-testimonials__count {
+    color: rgba(214, 232, 255, 0.52) !important;
+    font-size: 0.78rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .investor-testimonials__buttons {
+    display: flex;
+    gap: 0.55rem;
+  }
+
+  .investor-testimonials__button {
+    display: inline-grid;
+    width: 2.55rem;
+    height: 2.55rem;
+    place-items: center;
+    border: 1px solid rgba(214, 232, 255, 0.2);
+    border-radius: 50%;
+    background: rgba(14, 41, 109, 0.42);
+    color: #d6e8ff;
+    font: inherit;
+    font-size: 1.1rem;
+    cursor: pointer;
+    transition: background 160ms ease, border-color 160ms ease;
+  }
+
+  .investor-testimonials__button:hover {
+    border-color: rgba(33, 161, 255, 0.72);
+    background: #205cf2;
+  }
+
+  .investor-testimonials__button:focus-visible {
+    outline: 2px solid #80c5ff;
+    outline-offset: 3px;
+  }
+
+  .investor-testimonials__note {
+    margin-top: 0.9rem !important;
+    color: rgba(214, 232, 255, 0.52) !important;
+    font-size: 0.75rem;
+    line-height: 1.5;
+  }
+
   @media screen and (max-width: 991px) {
     .navbar-menu.is-page-height-tablet {
       flex-direction: column !important;
@@ -344,11 +525,24 @@ const heroBackgrounds = `
     #pricing .flex-2rem-wrap.investment-plan-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
+
+    .section-strategies .investor-testimonial-product-row {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 2.5rem !important;
+    }
+
+    .section-strategies .investor-testimonial-product-row > .price-box {
+      justify-self: center;
+    }
   }
 
   @media (prefers-reduced-motion: reduce) {
     .splide__list.is-logos {
       animation: none !important;
+    }
+
+    .investor-testimonials__track {
+      scroll-behavior: auto;
     }
   }
 
@@ -372,6 +566,20 @@ const heroBackgrounds = `
       min-height: 26rem;
       margin: 0 auto;
       padding: 2rem 1.25rem 1.5rem;
+    }
+
+    .investor-testimonials__title {
+      font-size: 1.7rem !important;
+    }
+
+    .investor-testimonials__track {
+      grid-auto-columns: 88%;
+      gap: 0.75rem;
+    }
+
+    .investor-testimonial {
+      min-height: 16rem;
+      padding: 1.15rem;
     }
   }
 `;
@@ -448,6 +656,72 @@ const investmentPlans: InvestmentPlan[] = [
     maximum: '$15,000',
     duration: '18 Hours',
     benefits: ['Holiday special', 'Fastest returns', 'Limited time offer'],
+  },
+];
+
+type InvestorTestimonial = {
+  author: string;
+  country: string;
+  quote: string;
+  portrait: string;
+};
+
+const investorTestimonials: InvestorTestimonial[] = [
+  {
+    author: 'Alexander Whitmore',
+    country: 'United Kingdom',
+    quote:
+      "I've been looking for a platform where everything is easy to follow without having to spend too much time figuring things out. The layout is straightforward, and I can find the information I need without much trouble.",
+    portrait: 'assets/testimonials/testimonial-01.jpg',
+  },
+  {
+    author: 'Priya Nair',
+    country: 'India',
+    quote:
+      "What I like most is how simple the dashboard is. It doesn't feel unnecessarily complicated, and the information is arranged neatly.",
+    portrait: 'assets/testimonials/testimonial-02.jpg',
+  },
+  {
+    author: 'Matheus Oliveira da Costa',
+    country: 'Brazil',
+    quote:
+      "I usually take my time before trying any financial platform. I'm still learning my way around Auvrenthia, but so far the interface has been easy enough to understand. I prefer to make decisions after reviewing the details carefully.",
+    portrait: 'assets/testimonials/testimonial-03.jpg',
+  },
+  {
+    author: 'Élodie Moreau',
+    country: 'France',
+    quote:
+      "I appreciate when a website respects my time. I don't want to click through ten different pages just to understand my account. Auvrenthia's presentation is clear, which makes the experience less frustrating.",
+    portrait: 'assets/testimonials/testimonial-04.jpg',
+  },
+  {
+    author: 'Charlotte McKenzie',
+    country: 'Canada',
+    quote:
+      "The first thing I noticed was the presentation. Everything feels organized, and I didn't have to guess where to look for the main account details. I'm interested in seeing how the platform develops over time.",
+    portrait: 'assets/testimonials/testimonial-05.jpg',
+  },
+  {
+    author: 'Kenji Nakamura',
+    country: 'Japan',
+    quote:
+      "Clean design and easy navigation. That's a good start for me. I like platforms that keep things simple instead of making basic tasks unnecessarily complicated.",
+    portrait: 'assets/testimonials/testimonial-06.jpg',
+  },
+  {
+    author: 'Thandeka Mokoena',
+    country: 'South Africa',
+    quote:
+      "I don't rush into investments, especially online. I prefer to understand the platform, check the terms and conditions, and know exactly what I'm dealing with. The website is easy to navigate, which is helpful when going through those details.",
+    portrait: 'assets/testimonials/testimonial-07.jpg',
+  },
+  {
+    author: "Lachlan James O'Connor",
+    country: 'Australia',
+    quote:
+      "I tend to be cautious with anything involving money online. A clean website is a good first impression, but I still want to see clear documentation, realistic explanations of risk, and accessible support before deciding whether a platform is right for me.",
+    portrait: 'assets/testimonials/testimonial-08.jpg',
   },
 ];
 
@@ -642,6 +916,305 @@ const textReplacements: Record<string, string> = {
   'Wealth Hub and its affiliated services provide educational content only. We do not offer investment advice, portfolio management, or any other service requiring registration or licensing under financial regulations. Nothing on this website, in our Discord community, or within the Wealth Hub Archive constitutes a recommendation, solicitation, or offer to buy or sell any financial instrument. All information is general in nature and for informational purposes only. Users are solely responsible for their own investment decisions and should consult a licensed financial advisor or registered investment professional before acting on any material provided. Use of this site implies acceptance of our full terms and conditions and legal disclaimers.':
     'Investing involves risk, including the possible loss of principal. Asset availability, eligibility, and risks vary by product and jurisdiction. Information on this site is general and is not a personal recommendation. Review relevant product disclosures and consider speaking with a licensed professional before investing.',
 };
+
+function renderInvestorTestimonials(pageDocument: Document) {
+  const strategiesSection =
+    pageDocument.querySelector<HTMLElement>('.section-strategies');
+  const issue36CoverImage =
+    strategiesSection?.querySelector<HTMLImageElement>(
+      '.image-wrap.is-smaller img[src*="34_201.avif"]',
+    );
+  const issue36CoverWrapper =
+    issue36CoverImage?.closest<HTMLElement>('.image-wrap.is-smaller');
+  const productRow = issue36CoverWrapper?.parentElement;
+  const productDetails = productRow?.querySelector('.price-box');
+
+  if (
+    !strategiesSection ||
+    !issue36CoverWrapper ||
+    !productRow ||
+    !productDetails
+  ) {
+    throw new Error(
+      'The Issue 36 cover or its product-details row was not found.',
+    );
+  }
+
+  const section = pageDocument.createElement('section');
+  section.id = 'investor-testimonials';
+  section.className = 'investor-testimonials';
+  section.setAttribute('aria-labelledby', 'investor-testimonials-title');
+  section.setAttribute('data-testid', 'section-investor-testimonials');
+
+  const heading = pageDocument.createElement('header');
+  heading.className = 'investor-testimonials__header';
+
+  const eyebrow = pageDocument.createElement('p');
+  eyebrow.className = 'investor-testimonials__eyebrow';
+  eyebrow.textContent = 'Investor voices';
+
+  const title = pageDocument.createElement('h2');
+  title.id = 'investor-testimonials-title';
+  title.className = 'investor-testimonials__title';
+  title.textContent = 'Testimonials';
+  title.setAttribute('data-testid', 'text-investor-testimonials-title');
+
+  const intro = pageDocument.createElement('p');
+  intro.className = 'investor-testimonials__intro';
+  intro.textContent = 'Swipe or use the arrows to browse investor experiences.';
+
+  heading.append(eyebrow, title, intro);
+
+  const track = pageDocument.createElement('div');
+  track.id = 'investor-testimonials-track';
+  track.className = 'investor-testimonials__track';
+  track.setAttribute('role', 'region');
+  track.setAttribute('aria-label', 'Investor testimonials carousel');
+  track.setAttribute('data-testid', 'track-investor-testimonials');
+
+  investorTestimonials.forEach((testimonial, index) => {
+    const card = pageDocument.createElement('article');
+    card.className = 'investor-testimonial';
+    card.setAttribute('role', 'group');
+    card.setAttribute('aria-roledescription', 'slide');
+    card.setAttribute(
+      'aria-label',
+      `Testimonial ${index + 1} of ${investorTestimonials.length}`,
+    );
+    card.setAttribute('data-testid', `card-investor-testimonial-${index + 1}`);
+
+    const author = pageDocument.createElement('div');
+    author.className = 'investor-testimonial__author';
+
+    const portrait = pageDocument.createElement('img');
+    portrait.className = 'investor-testimonial__portrait';
+    portrait.src = testimonial.portrait;
+    portrait.alt = `Portrait of ${testimonial.author}`;
+    portrait.loading = 'lazy';
+    portrait.decoding = 'async';
+    portrait.setAttribute(
+      'data-testid',
+      `img-investor-testimonial-${index + 1}`,
+    );
+
+    const identity = pageDocument.createElement('div');
+    const name = pageDocument.createElement('p');
+    name.className = 'investor-testimonial__name';
+    name.textContent = testimonial.author;
+    const country = pageDocument.createElement('span');
+    country.className = 'investor-testimonial__country';
+    country.textContent = testimonial.country;
+    identity.append(name, country);
+    author.append(portrait, identity);
+
+    const quote = pageDocument.createElement('blockquote');
+    quote.className = 'investor-testimonial__quote';
+    quote.textContent = testimonial.quote;
+    quote.setAttribute(
+      'data-testid',
+      `text-investor-testimonial-quote-${index + 1}`,
+    );
+
+    card.append(author, quote);
+    track.appendChild(card);
+  });
+
+  const controls = pageDocument.createElement('div');
+  controls.className = 'investor-testimonials__controls';
+
+  const count = pageDocument.createElement('span');
+  count.className = 'investor-testimonials__count';
+  count.textContent = `01 / ${String(investorTestimonials.length).padStart(2, '0')}`;
+  count.setAttribute('aria-live', 'off');
+  count.setAttribute('data-testid', 'status-investor-testimonial-count');
+
+  const buttons = pageDocument.createElement('div');
+  buttons.className = 'investor-testimonials__buttons';
+
+  const previousButton = pageDocument.createElement('button');
+  previousButton.type = 'button';
+  previousButton.className = 'investor-testimonials__button';
+  previousButton.setAttribute('aria-label', 'Previous testimonial');
+  previousButton.setAttribute('data-carousel-direction', 'previous');
+  previousButton.setAttribute('data-testid', 'button-previous-testimonial');
+  previousButton.textContent = '←';
+
+  const nextButton = pageDocument.createElement('button');
+  nextButton.type = 'button';
+  nextButton.className = 'investor-testimonials__button';
+  nextButton.setAttribute('aria-label', 'Next testimonial');
+  nextButton.setAttribute('data-carousel-direction', 'next');
+  nextButton.setAttribute('data-testid', 'button-next-testimonial');
+  nextButton.textContent = '→';
+
+  buttons.append(previousButton, nextButton);
+  controls.append(count, buttons);
+
+  const note = pageDocument.createElement('p');
+  note.className = 'investor-testimonials__note';
+  note.textContent =
+    'Testimonials reflect individual platform experiences and are not investment advice or a guarantee of outcomes.';
+  note.setAttribute('data-testid', 'text-investor-testimonials-disclaimer');
+
+  section.append(heading, track, controls, note);
+
+  const carouselScript = pageDocument.createElement('script');
+  carouselScript.textContent = `(() => {
+    const section = document.getElementById('investor-testimonials');
+    const track = document.getElementById('investor-testimonials-track');
+    if (!section || !track) return;
+
+    const cards = Array.from(track.querySelectorAll('.investor-testimonial'));
+    const count = section.querySelector('.investor-testimonials__count');
+    const previousButton = section.querySelector('[data-carousel-direction="previous"]');
+    const nextButton = section.querySelector('[data-carousel-direction="next"]');
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    if (!cards.length || !count || !previousButton || !nextButton) return;
+
+    let currentIndex = 0;
+    let isVisible = false;
+    let isHovered = false;
+    let hasFocus = false;
+    let isInteracting = false;
+    let timer;
+    let resumeTimer;
+    let scrollFrame;
+
+    const updateCount = () => {
+      count.textContent =
+        String(currentIndex + 1).padStart(2, '0') +
+        ' / ' +
+        String(cards.length).padStart(2, '0');
+    };
+
+    const stopAutoplay = () => {
+      window.clearTimeout(timer);
+      timer = undefined;
+    };
+
+    const canAutoplay = () =>
+      isVisible &&
+      !isHovered &&
+      !hasFocus &&
+      !isInteracting &&
+      !document.hidden &&
+      !reducedMotion.matches;
+
+    const goTo = (requestedIndex) => {
+      currentIndex = (requestedIndex + cards.length) % cards.length;
+      const trackLeft = track.getBoundingClientRect().left;
+      const cardLeft = cards[currentIndex].getBoundingClientRect().left;
+      track.scrollTo({
+        left: track.scrollLeft + cardLeft - trackLeft,
+        behavior: reducedMotion.matches ? 'auto' : 'smooth',
+      });
+      updateCount();
+    };
+
+    const scheduleAutoplay = () => {
+      stopAutoplay();
+      if (!canAutoplay()) return;
+      timer = window.setTimeout(() => {
+        goTo(currentIndex + 1);
+        scheduleAutoplay();
+      }, 6500);
+    };
+
+    const updateIndexFromScroll = () => {
+      const trackLeft = track.getBoundingClientRect().left;
+      let nearestIndex = 0;
+      let nearestDistance = Number.POSITIVE_INFINITY;
+      cards.forEach((card, index) => {
+        const distance = Math.abs(card.getBoundingClientRect().left - trackLeft);
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearestIndex = index;
+        }
+      });
+      currentIndex = nearestIndex;
+      updateCount();
+    };
+
+    previousButton.addEventListener('click', () => {
+      goTo(currentIndex - 1);
+      scheduleAutoplay();
+    });
+    nextButton.addEventListener('click', () => {
+      goTo(currentIndex + 1);
+      scheduleAutoplay();
+    });
+
+    track.addEventListener(
+      'scroll',
+      () => {
+        window.cancelAnimationFrame(scrollFrame);
+        scrollFrame = window.requestAnimationFrame(updateIndexFromScroll);
+      },
+      { passive: true },
+    );
+
+    section.addEventListener('pointerenter', (event) => {
+      if (event.pointerType === 'mouse') {
+        isHovered = true;
+        scheduleAutoplay();
+      }
+    });
+    section.addEventListener('pointerleave', (event) => {
+      if (event.pointerType === 'mouse') {
+        isHovered = false;
+        scheduleAutoplay();
+      }
+    });
+    section.addEventListener('focusin', () => {
+      hasFocus = true;
+      scheduleAutoplay();
+    });
+    section.addEventListener('focusout', () => {
+      window.setTimeout(() => {
+        hasFocus = section.contains(document.activeElement);
+        scheduleAutoplay();
+      }, 0);
+    });
+
+    track.addEventListener(
+      'pointerdown',
+      () => {
+        isInteracting = true;
+        scheduleAutoplay();
+        window.clearTimeout(resumeTimer);
+      },
+      { passive: true },
+    );
+    const resumeAfterInteraction = () => {
+      window.clearTimeout(resumeTimer);
+      resumeTimer = window.setTimeout(() => {
+        isInteracting = false;
+        scheduleAutoplay();
+      }, 5000);
+    };
+    track.addEventListener('pointerup', resumeAfterInteraction, { passive: true });
+    track.addEventListener('pointercancel', resumeAfterInteraction, {
+      passive: true,
+    });
+
+    document.addEventListener('visibilitychange', scheduleAutoplay);
+    reducedMotion.addEventListener?.('change', scheduleAutoplay);
+    if ('IntersectionObserver' in window) {
+      const observer = new IntersectionObserver((entries) => {
+        isVisible = entries.some((entry) => entry.isIntersecting);
+        scheduleAutoplay();
+      });
+      observer.observe(section);
+    } else {
+      isVisible = true;
+      scheduleAutoplay();
+    }
+  })();`;
+  pageDocument.body.appendChild(carouselScript);
+
+  productRow.classList.add('investor-testimonial-product-row');
+  issue36CoverWrapper.replaceWith(section);
+}
 
 function renderInvestmentPlans(pageDocument: Document) {
   const pricingSection = pageDocument.querySelector('#pricing');
@@ -1013,6 +1586,7 @@ function preparePage(source: string) {
     }
   }
 
+  renderInvestorTestimonials(pageDocument);
   renderInvestmentPlans(pageDocument);
 
   const backgroundStyle = pageDocument.createElement('style');
