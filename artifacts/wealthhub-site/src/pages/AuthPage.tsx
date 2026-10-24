@@ -4,6 +4,7 @@ import './auth-page.theme.css';
 
 type AuthPageProps = {
   mode: 'login' | 'signup';
+  onDemoAccess: () => void;
 };
 
 function BrandMark() {
@@ -60,7 +61,7 @@ function GoogleMark() {
   );
 }
 
-export default function AuthPage({ mode }: AuthPageProps) {
+export default function AuthPage({ mode, onDemoAccess }: AuthPageProps) {
   const [notice, setNotice] = useState('');
   const isSignup = mode === 'signup';
 
@@ -72,9 +73,7 @@ export default function AuthPage({ mode }: AuthPageProps) {
     event.preventDefault();
     const form = event.currentTarget;
     if (!form.reportValidity()) return;
-    setNotice(
-      'Account access is not active yet. Your details have not been saved or sent. Access will be enabled when Supabase is connected.',
-    );
+    onDemoAccess();
   }
 
   return (
@@ -124,7 +123,9 @@ export default function AuthPage({ mode }: AuthPageProps) {
               placeholder="Enter your password"
               minLength={8}
             />
-            <p className="auth-privacy-note">No information is saved or sent until account access is connected.</p>
+            <p className="auth-privacy-note">
+              Preview only: a valid email and 8+ character password opens sample data. No account is created, and credentials are not saved or sent.
+            </p>
             <button className="auth-submit" type="submit" data-testid="button-auth-submit">
               {isSignup ? 'Create account' : 'Sign in'}
               <span aria-hidden="true">→</span>
