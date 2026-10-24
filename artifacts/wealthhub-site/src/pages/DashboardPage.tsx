@@ -40,13 +40,6 @@ function buildDashboardDocument() {
       min-width: 0;
       align-items: center;
     }
-    @media (max-width: 600px) {
-      .tabs#tabs {
-        flex-wrap: wrap;
-        gap: 4px 14px;
-        overflow-x: visible;
-      }
-    }
   `;
   const logoutControl = `
     const memberAvatar=document.querySelector(".av");
