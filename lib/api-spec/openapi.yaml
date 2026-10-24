@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: markets
+    description: Public market data
 paths:
   /healthz:
     get:
@@ -24,6 +26,53 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /markets/{category}:
+    get:
+      operationId: getMarketFeed
+      tags: [markets]
+      summary: Get a live market feed
+      parameters:
+        - name: category
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/MarketCategory"
+      responses:
+        "200":
+          description: Market assets and feed freshness
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarketFeed"
+  /markets/{category}/history/{symbol}/{days}:
+    get:
+      operationId: getMarketHistory
+      tags: [markets]
+      summary: Get historical market candles
+      parameters:
+        - name: category
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/MarketCategory"
+        - name: symbol
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: days
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: ["1", "7", "30", "90", "365"]
+      responses:
+        "200":
+          description: Historical market candles
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarketHistory"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +82,75 @@ components:
           type: string
       required:
         - status
+    MarketCategory:
+      type: string
+      enum: [stocks, etfs, crypto, forex, commodities]
+    MarketAsset:
+      type: object
+      properties:
+        id:
+          type: ["string", "null"]
+        symbol:
+          type: string
+        name:
+          type: string
+        price:
+          type: number
+        change24h:
+          type: ["number", "null"]
+        icon:
+          type: ["string", "null"]
+        sparkline:
+          type: array
+          items:
+            type: number
+      required: [symbol, name, price, change24h, icon, sparkline]
+    MarketFeed:
+      type: object
+      properties:
+        category:
+          $ref: "#/components/schemas/MarketCategory"
+        source:
+          type: string
+        asOf:
+          type: ["string", "null"]
+        fetchedAt:
+          type: string
+        assets:
+          type: array
+          items:
+            $ref: "#/components/schemas/MarketAsset"
+        cached:
+          type: boolean
+        stale:
+          type: boolean
+      required: [category, source, asOf, fetchedAt, assets, cached, stale]
+    MarketCandle:
+      type: object
+      properties:
+        time:
+          type: integer
+        open:
+          type: number
+        high:
+          type: number
+        low:
+          type: number
+        close:
+          type: number
+        vol:
+          type: ["number", "null"]
+      required: [time, open, high, low, close, vol]
+    MarketHistory:
+      type: object
+      properties:
+        source:
+          type: string
+        asOf:
+          type: ["string", "null"]
+        candles:
+          type: array
+          items:
+            $ref: "#/components/schemas/MarketCandle"
+      required: [source, asOf, candles]
 
