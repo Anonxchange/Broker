@@ -94,7 +94,7 @@ function buildDashboardDocument() {
     )
     .replace(
       /async function loadCrypto\(\)\{[\s\S]*?\nfunction lg/,
-      'async function loadCrypto(){await Promise.all([loadPublic("Stocks"),loadPublic("ETFs"),loadPublic("Crypto"),loadPublic("Forex"),loadPublic("Commodities")])}\nfunction lg',
+      'async function loadCrypto(){await Promise.all([loadPublic("Stocks"),loadPublic("ETFs"),loadPublic("Crypto"),loadPublic("Forex"),loadPublic("Commodities")])}\nconst MARKET_ICONS=Object.create(null),MARKET_STATUS=Object.create(null),MARKET_META=Object.create(null);\nfunction lg',
     )
     .replace(
       /async function loadPublic\(\)\{[\s\S]*?\}\ntickRender\(\);/,
