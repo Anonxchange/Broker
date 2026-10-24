@@ -6,76 +6,40 @@ type DashboardPageProps = {
   onLogout: () => void;
 };
 
-const themeTokens = [
-  'background',
-  'foreground',
-  'muted-foreground',
-  'border',
-  'brand-primary',
-  'primary-foreground',
-  'sidebar',
-  'sidebar-foreground',
-  'brand-green',
-  'destructive',
-  'chart-1',
-  'chart-2',
-  'chart-3',
-  'chart-4',
-  'chart-5',
-] as const;
-
-type ThemeValues = Record<(typeof themeTokens)[number], string>;
-
-function readThemeValues(className = ''): ThemeValues {
-  const probe = document.createElement('div');
-  if (className) probe.className = className;
-  document.body.appendChild(probe);
-  const style = window.getComputedStyle(probe);
-  const values = Object.fromEntries(
-    themeTokens.map((token) => [
-      token,
-      style.getPropertyValue(`--${token}`).trim(),
-    ]),
-  ) as ThemeValues;
-  probe.remove();
-  return values;
-}
-
-function cssVariables(values: ThemeValues, mode: 'light' | 'dark') {
-  const declarations = [
-    `--bg:${values.background}`,
-    `--ink:${values.foreground}`,
-    `--mute:${values['muted-foreground']}`,
-    `--line:${values.border}`,
-    `--brand:${values['brand-primary']}`,
-    `--side:${values.sidebar}`,
-    `--side-t:${values['sidebar-foreground']}`,
-    `--up:${values['brand-green']}`,
-    `--dn:${values.destructive}`,
-    `--primary-foreground:${values['primary-foreground']}`,
-    ...themeTokens
-      .filter((token) => token.startsWith('chart-'))
-      .map((token) => `--${token}:${values[token]}`),
-  ].join(';');
-  return `:root[data-theme="${mode}"]{${declarations};color-scheme:${mode}}`;
-}
-
 function buildDashboardDocument() {
-  const light = readThemeValues();
-  const dark = readThemeValues('dark');
-  const font = window
-    .getComputedStyle(document.documentElement)
-    .getPropertyValue('--app-font-sans')
-    .trim();
-  const themeStyles = `
-    ${cssVariables(light, 'light')}
-    ${cssVariables(dark, 'dark')}
-    body{font-family:${font || 'system-ui,sans-serif'}!important}
-    #mix div:nth-child(1){background:var(--brand)!important;color:var(--primary-foreground)!important}
-    #mix div:nth-child(2){background:var(--chart-2)!important;color:var(--primary-foreground)!important}
-    #mix div:nth-child(3){background:var(--chart-3)!important;color:var(--primary-foreground)!important}
-    #mix div:nth-child(4){background:var(--chart-4)!important;color:var(--ink)!important}
-    #mix div:nth-child(5){background:var(--line)!important;color:var(--ink)!important}
+  const wealthHubTypography = `
+    @font-face {
+      font-family: Ppmori;
+      src: url("/wealthhub/assets/media/cdn.prod.website-files.com/68f0faa809be102289ce1257/68f0faa809be102289ce12a8_PPMori-Regular.otf") format("opentype");
+      font-style: normal;
+      font-weight: 400;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: Ppmori;
+      src: url("/wealthhub/assets/media/cdn.prod.website-files.com/68f0faa809be102289ce1257/68f0faa809be102289ce12a9_PPMori-SemiBold.otf") format("opentype");
+      font-style: normal;
+      font-weight: 600;
+      font-display: swap;
+    }
+    body {
+      font-family: Ppmori, Arial, sans-serif !important;
+      font-size: 1rem !important;
+      font-weight: 400;
+      line-height: 1.5;
+    }
+    .logo .dashboard-brand-mark,
+    #title .dashboard-brand-mark {
+      display: block;
+      width: 171px;
+      max-width: 100%;
+      height: auto;
+    }
+    #title {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+    }
   `;
   const logoutControl = `
     const memberAvatar=document.querySelector(".av");
@@ -91,30 +55,38 @@ function buildDashboardDocument() {
       });
     }
   `;
+  const headerLogoControl = `
+    const dashboardTitle=document.querySelector("#title");
+    const syncHeaderLogo=()=>{
+      if(!dashboardTitle||dashboardTitle.querySelector("[data-dashboard-brand]"))return;
+      const logo=document.createElement("img");
+      logo.src="/wealthhub/auvrenthia-logo.svg";
+      logo.alt="Auvrenthia Markets";
+      logo.className="dashboard-brand-mark";
+      logo.setAttribute("data-dashboard-brand","");
+      dashboardTitle.replaceChildren(logo);
+    };
+    syncHeaderLogo();
+    new MutationObserver(syncHeaderLogo).observe(dashboardTitle,{childList:true});
+  `;
   let html = harborDashboardHtml
     .replace('<title>Harbor – Investing</title>', '<title>Auvrenthia Markets</title>')
-    .replace('<div class="logo">Harbor</div>', '<div class="logo">Auvrenthia Markets</div>')
+    .replace(
+      '<div class="logo">Harbor</div>',
+      '<div class="logo"><img src="/wealthhub/auvrenthia-logo.svg" alt="Auvrenthia Markets" class="dashboard-brand-mark" /></div>',
+    )
     .replace(
       /<link rel="stylesheet" href="https:\/\/fonts\.googleapis\.com\/[^"]+">/,
       '',
     )
-    .replaceAll('#fff', 'var(--primary-foreground)')
     .replaceAll('#6D93FF', 'var(--brand)')
     .replaceAll(
       'rgba(109,147,255,.22)',
       'color-mix(in srgb,var(--brand) 22%,transparent)',
     )
-    .replaceAll(
-      'fontFamily:"Schibsted Grotesk,system-ui,sans-serif"',
-      'fontFamily:getComputedStyle(document.body).fontFamily',
-    )
-    .replaceAll(
-      'const CL={Stocks:["#1F4FFF","var(--primary-foreground)",48200],ETFs:["#6B93FF","#06134A",27600],Crypto:["#0A2A9E","var(--primary-foreground)",19400],"Real estate":["#A9D2FF","#06134A",14100],Forex:["#3D7BFF","var(--primary-foreground)",0],Commodities:["#14388F","var(--primary-foreground)",0],Agriculture:["#5FB4E8","#06134A",0],Bonds:["#7B8FD6","#06134A",0],Plans:["#3D7BFF","var(--primary-foreground)",0],Cash:["#C5D3F5","#06134A",0]};',
-      'const CL={Stocks:["var(--brand)","var(--primary-foreground)",48200],ETFs:["var(--chart-2)","var(--primary-foreground)",27600],Crypto:["var(--chart-3)","var(--primary-foreground)",19400],"Real estate":["var(--chart-4)","var(--ink)",14100],Forex:["var(--chart-1)","var(--primary-foreground)",0],Commodities:["var(--chart-5)","var(--primary-foreground)",0],Agriculture:["var(--chart-2)","var(--primary-foreground)",0],Bonds:["var(--chart-4)","var(--ink)",0],Plans:["var(--brand)","var(--primary-foreground)",0],Cash:["var(--line)","var(--ink)",0]};',
-    )
     .replace(
       /function lg\(t\)\{[\s\S]*?\nfunction renderRail/,
-      'function lg(t){return `<b class="lg" style="background:var(--brand);color:var(--primary-foreground)">${t.replace(/[^A-Za-z0-9]/g,"").slice(0,3)}</b>`}\nfunction renderRail',
+      'function lg(t){return `<b class="lg" style="background:var(--brand);color:#fff">${t.replace(/[^A-Za-z0-9]/g,"").slice(0,3)}</b>`}\nfunction renderRail',
     )
     .replace(
       /async function loadCrypto\(\)\{[\s\S]*?\nfunction lg/,
@@ -128,8 +100,11 @@ function buildDashboardDocument() {
       'ST.wallet=(await window.ethereum.request({method:"eth_requestAccounts"}))[0]',
       'throw new Error("Wallet connection is disabled in this preview.")',
     )
-    .replace('</head>', `<style>${themeStyles}</style></head>`)
-    .replace('</body>', `<script>${logoutControl}</script></body>`);
+    .replace('</head>', `<style>${wealthHubTypography}</style></head>`)
+    .replace(
+      '</body>',
+      `<script>${logoutControl}${headerLogoControl}</script></body>`,
+    );
 
   const darkMode = document.documentElement.classList.contains('dark');
   html = html.replace(
