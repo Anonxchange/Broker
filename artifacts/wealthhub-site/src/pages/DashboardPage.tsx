@@ -94,23 +94,39 @@ function buildDashboardDocument() {
     )
     .replace(
       /async function loadCrypto\(\)\{[\s\S]*?\nfunction lg/,
-      'async function loadCrypto(){await Promise.all([loadPublic("Crypto"),loadPublic("Forex"),loadPublic("Commodities")])}\nfunction lg',
+      'async function loadCrypto(){await Promise.all([loadPublic("Stocks"),loadPublic("ETFs"),loadPublic("Crypto"),loadPublic("Forex"),loadPublic("Commodities")])}\nfunction lg',
     )
     .replace(
       /async function loadPublic\(\)\{[\s\S]*?\}\ntickRender\(\);/,
-      'async function loadPublic(category){const key={"Crypto":"crypto","Forex":"forex","Commodities":"commodities"}[category];if(!key)return;MARKET_STATUS[category]="Loading live market data…";try{const response=await fetch("/api/markets/"+key,{cache:"no-store"});if(!response.ok)throw new Error("Market feed unavailable");const feed=await response.json();const clean=value=>String(value??"").replace(/[&<>"]/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;", "\\"":"&quot;"}[ch]));D[category]=feed.assets.map(asset=>{if(asset.icon)MARKET_ICONS[asset.symbol]=asset.icon;return[clean(asset.symbol),clean(asset.name),asset.price,asset.change24h,asset.sparkline||[],category==="Crypto"?asset.id||"":null]});MARKET_META[category]={source:feed.source,asOf:feed.asOf,stale:feed.stale};MARKET_STATUS[category]=feed.source+" · updated "+(feed.asOf?new Date(feed.asOf).toLocaleString():"just now")+(feed.stale?" · showing cached data":"");LIVE={ok:true,msg:MARKET_STATUS[category]}}catch(error){D[category]=[];MARKET_META[category]=null;MARKET_STATUS[category]="Live data is unavailable; sample prices are not being shown.";LIVE={ok:false,msg:MARKET_STATUS[category]}}tickRender();renderRail();renderList();if(page===category)renderMkt(category)}\ntickRender();',
+      'async function loadPublic(category){const key={"Stocks":"stocks","ETFs":"etfs","Crypto":"crypto","Forex":"forex","Commodities":"commodities"}[category];if(!key)return;MARKET_STATUS[category]="Loading live market data…";try{const response=await fetch("/api/markets/"+key,{cache:"no-store"});const feed=await response.json();if(!response.ok||!feed||!Array.isArray(feed.assets))throw new Error(feed&&feed.error||"Market feed unavailable");const clean=value=>String(value??"").replace(/[&<>"]/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;", "\\"":"&quot;"}[ch]));D[category]=feed.assets.map(asset=>{if(asset.icon)MARKET_ICONS[asset.symbol]=asset.icon;return[clean(asset.symbol),clean(asset.name),asset.price,asset.change24h,asset.sparkline||[],asset.id||null]});MARKET_META[category]={source:feed.source,asOf:feed.asOf,stale:feed.stale};MARKET_STATUS[category]=feed.source+" · updated "+(feed.asOf?new Date(feed.asOf).toLocaleString():"just now")+(feed.stale?" · showing cached data":"");if(category==="Crypto")LIVE={ok:true,msg:MARKET_STATUS[category]}}catch(error){D[category]=[];MARKET_META[category]=null;MARKET_STATUS[category]="Live data is unavailable; no sample prices are being shown.";if(category==="Crypto")LIVE={ok:false,msg:MARKET_STATUS[category]}}tickRender();renderRail();renderList();if(page===category)renderMkt(category)}\ntickRender();',
     )
     .replace(
       'if(ism)renderMkt(page);if(ms)',
-      'if(ism){renderMkt(page);if(["Crypto","Forex","Commodities"].includes(page))loadPublic(page)}if(ms)',
+      'if(ism){renderMkt(page);if(["Stocks","ETFs","Crypto","Forex","Commodities"].includes(page))loadPublic(page)}if(ms)',
     )
     .replace(
       '$("#tabs").onclick=e=>{if(e.target.dataset.t){tab=e.target.dataset.t;renderList()}};',
-      '$("#tabs").onclick=e=>{if(e.target.dataset.t){tab=e.target.dataset.t;renderList();if(["Crypto","Forex","Commodities"].includes(tab))loadPublic(tab)}};',
+      '$("#tabs").onclick=e=>{if(e.target.dataset.t){tab=e.target.dataset.t;renderList();if(["Stocks","ETFs","Crypto","Forex","Commodities"].includes(tab))loadPublic(tab)}};',
+    )
+    .replace(
+      'const LV=!!D[k][0][5],TT=LV?LDS:TFS;',
+      'const LV=true,TT=LDS;',
+    )
+    .replace(
+      'let live=null,lerr=null;if(D[k][0][5]){try{live=await liveCandles(D[k].find(r=>r[0]===sym)[5],LD)}catch(e){lerr=e&&e.code||"error"}if(tok!==TOK)return}',
+      'let live=null,lerr=null;try{const symbol=(D[k].find(r=>r[0]===sym)||[])[5]||sym.replace("/","-");const category={"Stocks":"stocks","ETFs":"etfs","Crypto":"crypto","Forex":"forex","Commodities":"commodities"}[k];const response=await fetch("/api/markets/"+category+"/history/"+encodeURIComponent(symbol)+"/"+LD,{cache:"no-store"});if(!response.ok)throw new Error("Historical data unavailable");const history=await response.json();live=history.candles;if(!Array.isArray(live)||live.length===0)throw new Error("No historical data returned")}catch(e){lerr=e&&e.message||"error"}if(tok!==TOK)return',
+    )
+    .replace(
+      'const up=css("--up"),dn=css("--dn"),d=live||cd(p,sym.length*977+sym.charCodeAt(0),TF,140);',
+      'const up=css("--up"),dn=css("--dn"),d=live||[];if(!d.length){el.innerHTML=\'<p class="note">Live chart data is currently unavailable for this asset.</p>\';$("#ohlc").textContent="";return}',
+    )
+    .replace(
+      'path(r[4]||series(i*13+t.length*7,30,c/8),100,30,3)',
+      'r[4]&&r[4].length?path(r[4],100,30,3):""',
     )
     .replace(
       'tickRender();renderRail();renderList();drawChart();loadCrypto();',
-      'D.Crypto=[];D.Forex=[];D.Commodities=[];tickRender();renderRail();renderList();drawChart();loadCrypto();',
+      'D.Stocks=[];D.ETFs=[];D.Crypto=[];D.Forex=[];D.Commodities=[];tickRender();renderRail();renderList();drawChart();loadCrypto();',
     )
     .replace(
       'const rows=[D.Crypto[0],D.Stocks[1],D.Crypto[1],D.Stocks[0],D.Commodities[0]];',
