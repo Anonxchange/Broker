@@ -85,16 +85,56 @@ function buildDashboardDocument() {
       'color-mix(in srgb,var(--brand) 22%,transparent)',
     )
     .replace(
+      /function tickRender\(\)\{[\s\S]*?\}\nlet LIVE=/,
+      'function tickRender(){const find=(rows,symbol)=>rows.find(row=>row[0]===symbol),items=[["BTC",find(D.Crypto,"BTC"),"crypto"],["ETH",find(D.Crypto,"ETH"),"crypto"],["EUR/USD",find(D.Forex,"EUR/USD"),"forex"],["USD/NGN",find(D.Forex,"USD/NGN"),"forex"],["Gold",find(D.Commodities,"XAU"),"metal"],["Silver",find(D.Commodities,"XAG"),"metal"]];$("#tick").innerHTML=items.map(([name,asset,kind])=>{const value=asset?asset[2]:null,change=asset&&Number.isFinite(asset[3])?asset[3]:null,price=value==null?"—":kind==="forex"?value.toFixed(4):kind==="crypto"&&Math.abs(value)<.01?"$"+value.toPrecision(4):fmt(value);return `<span>${name}<b>${price}</b><span class="${change===null?"":change>=0?"up":"dn"}">${change===null?"":(change>=0?"+":"−")+Math.abs(change).toFixed(2)+"%"}</span></span>`}).join("")}\nlet LIVE=',
+    )
+    .replace(
       /function lg\(t\)\{[\s\S]*?\nfunction renderRail/,
-      'function lg(t){return `<b class="lg" style="background:var(--brand);color:#fff">${t.replace(/[^A-Za-z0-9]/g,"").slice(0,3)}</b>`}\nfunction renderRail',
+      'const MARKET_ICONS=Object.create(null),MARKET_STATUS=Object.create(null),MARKET_META=Object.create(null);\nfunction lg(t){const src=MARKET_ICONS[t];if(src)return `<img class="lg" src="${src}" alt="" loading="lazy" style="object-fit:cover;border-radius:50%">`;return `<b class="lg" style="background:var(--brand);color:#fff">${String(t||"").replace(/[^A-Za-z0-9]/g,"").slice(0,3)}</b>`}\nfunction renderRail',
     )
     .replace(
       /async function loadCrypto\(\)\{[\s\S]*?\nfunction lg/,
-      'async function loadCrypto(){LIVE={ok:false,msg:"Sample market prices are shown."};tickRender();renderRail();renderList()}\nfunction lg',
+      'async function loadCrypto(){await Promise.all([loadPublic("Crypto"),loadPublic("Forex"),loadPublic("Commodities")])}\nfunction lg',
     )
     .replace(
       /async function loadPublic\(\)\{[\s\S]*?\}\ntickRender\(\);/,
-      'async function loadPublic(){LIVE={ok:false,msg:"Sample market prices are shown."}}\ntickRender();',
+      'async function loadPublic(category){const key={"Crypto":"crypto","Forex":"forex","Commodities":"commodities"}[category];if(!key)return;MARKET_STATUS[category]="Loading live market data…";try{const response=await fetch("/api/markets/"+key,{cache:"no-store"});if(!response.ok)throw new Error("Market feed unavailable");const feed=await response.json();const clean=value=>String(value??"").replace(/[&<>"]/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;", "\\"":"&quot;"}[ch]));D[category]=feed.assets.map(asset=>{if(asset.icon)MARKET_ICONS[asset.symbol]=asset.icon;return[clean(asset.symbol),clean(asset.name),asset.price,asset.change24h,asset.sparkline||[],category==="Crypto"?asset.id||"":null]});MARKET_META[category]={source:feed.source,asOf:feed.asOf,stale:feed.stale};MARKET_STATUS[category]=feed.source+" · updated "+(feed.asOf?new Date(feed.asOf).toLocaleString():"just now")+(feed.stale?" · showing cached data":"");LIVE={ok:true,msg:MARKET_STATUS[category]}}catch(error){D[category]=[];MARKET_META[category]=null;MARKET_STATUS[category]="Live data is unavailable; sample prices are not being shown.";LIVE={ok:false,msg:MARKET_STATUS[category]}}tickRender();renderRail();renderList();if(page===category)renderMkt(category)}\ntickRender();',
+    )
+    .replace(
+      'if(ism)renderMkt(page);if(ms)',
+      'if(ism){renderMkt(page);if(["Crypto","Forex","Commodities"].includes(page))loadPublic(page)}if(ms)',
+    )
+    .replace(
+      '$("#tabs").onclick=e=>{if(e.target.dataset.t){tab=e.target.dataset.t;renderList()}};',
+      '$("#tabs").onclick=e=>{if(e.target.dataset.t){tab=e.target.dataset.t;renderList();if(["Crypto","Forex","Commodities"].includes(tab))loadPublic(tab)}};',
+    )
+    .replace(
+      'tickRender();renderRail();renderList();drawChart();loadCrypto();',
+      'D.Crypto=[];D.Forex=[];D.Commodities=[];tickRender();renderRail();renderList();drawChart();loadCrypto();',
+    )
+    .replace(
+      'const rows=[D.Crypto[0],D.Stocks[1],D.Crypto[1],D.Stocks[0],D.Commodities[0]];',
+      'const rows=[D.Crypto[0],D.Stocks[1],D.Crypto[1],D.Stocks[0],D.Commodities[0]].filter(Boolean);',
+    )
+    .replace(
+      'else{const o=[...rows].sort((a,b)=>b[3]-a[3]),g=o[0],l=o[o.length-1],f=x=>(x<0?"−":"+")+Math.abs(x).toFixed(1)+"%";s1=["Top gainer today",g[0],f(g[3]),g[3]>=0?"up":"dn"];s2=["Weakest today",l[0],f(l[3]),l[3]>=0?"up":"dn"]}',
+      'else if(rows.some(r=>Number.isFinite(r[3]))){const o=[...rows].sort((a,b)=>b[3]-a[3]),g=o[0],l=o[o.length-1],f=x=>(x<0?"−":"+")+Math.abs(x).toFixed(1)+"%";s1=["Top gainer today",g[0],f(g[3]),g[3]>=0?"up":"dn"];s2=["Weakest today",l[0],f(l[3]),l[3]>=0?"up":"dn"]}else{const meta=MARKET_META[k];s1=["Price source",meta?meta.source:"Public market feed","",""];s2=["Updated",meta&&meta.asOf?new Date(meta.asOf).toLocaleString():"—","",""]}',
+    )
+    .replace(
+      'const rows=D[k],yl=k==="Real estate"||k==="Bonds",hold=CL[k][2];let s1,s2;',
+      'const rows=D[k];if(!rows.length){$("#mkt").innerHTML=`<div class="head"><div><div class="lbl">${INFO[k][0]}</div><div class="bal" style="font-size:clamp(34px,6vw,56px)">${k}</div></div></div><p class="note">${MARKET_STATUS[k]||"Loading live market data…"}</p>`;return}const yl=k==="Real estate"||k==="Bonds",hold=CL[k][2];let s1,s2;',
+    )
+    .replace(
+      '${INFO[k][1]}${k==="Crypto"?" "+(LIVE.ok?"Prices are live from CoinGecko.":LIVE.msg):""}',
+      '${INFO[k][1]}${["Crypto","Forex","Commodities"].includes(k)?" "+(MARKET_STATUS[k]||"Loading live market data…"):""}',
+    )
+    .replace(
+      'const k=c>=0?"up":"dn",col=c>=0?"var(--up)":"var(--dn)";',
+      'const validChange=Number.isFinite(c),k=validChange?(c>=0?"up":"dn"):"",col=validChange?(c>=0?"var(--up)":"var(--dn)"):"var(--mute)";',
+    )
+    .replace(
+      '<div class="r">${tab==="Forex"?p.toFixed(4):fmt(p)}</div><div class="r ${k}">${c>=0?"+":"−"}${Math.abs(c).toFixed(1)}%</div>',
+      '<div class="r">${tab==="Forex"?p.toFixed(4):tab==="Crypto"&&Math.abs(p)<.01?"$"+p.toPrecision(4):fmt(p)}</div><div class="r ${k}">${Number.isFinite(c)?(c>=0?"+":"−")+Math.abs(c).toFixed(1)+"%":"—"}</div>',
     )
     .replace(
       'ST.wallet=(await window.ethereum.request({method:"eth_requestAccounts"}))[0]',
