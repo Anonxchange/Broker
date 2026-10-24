@@ -2,12 +2,15 @@ import { Router, type IRouter } from "express";
 import {
   GetMarketFeedParams,
   GetMarketFeedResponse,
+  GetMarketHistoryParams,
+  GetMarketHistoryResponse,
 } from "@workspace/api-zod";
 
 const router: IRouter = Router();
 
-type MarketCategory = "crypto" | "forex" | "commodities";
+type MarketCategory = "stocks" | "etfs" | "crypto" | "forex" | "commodities";
 type MarketAsset = {
+  id?: string | null;
   symbol: string;
   name: string;
   price: number;
@@ -22,6 +25,14 @@ type MarketFeed = {
   fetchedAt: string;
   assets: MarketAsset[];
 };
+type MarketCandle = {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  vol: number | null;
+};
 type CacheEntry = {
   feed: MarketFeed;
   freshUntil: number;
@@ -30,23 +41,39 @@ type CacheEntry = {
 
 const cache = new Map<MarketCategory, CacheEntry>();
 const inFlight = new Map<MarketCategory, Promise<MarketFeed>>();
+const historyCache = new Map<
+  string,
+  {
+    expiresAt: number;
+    data: { source: string; asOf: string | null; candles: MarketCandle[] };
+  }
+>();
 const freshForMs: Record<MarketCategory, number> = {
+  stocks: 60_000,
+  etfs: 60_000,
   crypto: 60_000,
   forex: 30 * 60_000,
   commodities: 60_000,
 };
 const staleForMs: Record<MarketCategory, number> = {
+  stocks: 15 * 60_000,
+  etfs: 15 * 60_000,
   crypto: 6 * 60 * 60_000,
   forex: 48 * 60 * 60_000,
   commodities: 6 * 60 * 60_000,
 };
 
-async function fetchJson<T>(url: string): Promise<T> {
+async function fetchJson<T>(
+  url: string,
+  options: { method?: "GET" | "POST"; body?: string } = {},
+): Promise<T> {
   const response = await fetch(url, {
     headers: {
       Accept: "application/json",
       "User-Agent": "AuvrenthiaMarkets/1.0",
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
     },
+    ...options,
     signal: AbortSignal.timeout(10_000),
   });
   if (!response.ok) {
@@ -78,6 +105,77 @@ function commodityIcon(color: string): string {
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
+async function loadEquities(
+  category: "stocks" | "etfs",
+): Promise<MarketFeed> {
+  type TradingViewRow = {
+    s?: string;
+    d?: [string, number, number, number, string];
+  };
+  type TradingViewResponse = {
+    data?: TradingViewRow[];
+  };
+
+  const symbols =
+    category === "stocks"
+      ? [
+          "NASDAQ:AAPL",
+          "NASDAQ:MSFT",
+          "NASDAQ:NVDA",
+          "NASDAQ:AMZN",
+          "NASDAQ:TSLA",
+        ]
+      : ["AMEX:VOO", "NASDAQ:QQQ", "AMEX:VTI", "AMEX:SPY", "AMEX:IVV"];
+  const response = await fetchJson<TradingViewResponse>(
+    "https://scanner.tradingview.com/america/scan",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        symbols: { tickers: symbols, query: { types: [] } },
+        columns: ["name", "close", "change", "volume", "description"],
+      }),
+    },
+  );
+
+  const assets = (response.data ?? []).flatMap((row): MarketAsset[] => {
+    const [symbol, price, change24h, , name] = row.d ?? [];
+    if (
+      !symbol ||
+      typeof price !== "number" ||
+      !Number.isFinite(price) ||
+      !name
+    ) {
+      return [];
+    }
+    return [
+      {
+        symbol,
+        name,
+        price,
+        change24h:
+          typeof change24h === "number" && Number.isFinite(change24h)
+            ? change24h
+            : null,
+        icon: null,
+        sparkline: [],
+      },
+    ];
+  });
+
+  if (assets.length === 0) {
+    throw new Error(`TradingView returned no ${category} market data`);
+  }
+
+  const fetchedAt = new Date().toISOString();
+  return {
+    category,
+    source: "TradingView",
+    asOf: fetchedAt,
+    fetchedAt,
+    assets,
+  };
+}
+
 async function loadCrypto(): Promise<MarketFeed> {
   type Coin = {
     id: string;
@@ -107,6 +205,7 @@ async function loadCrypto(): Promise<MarketFeed> {
     asOf: updated ?? null,
     fetchedAt: new Date().toISOString(),
     assets: coins.map((coin) => ({
+      id: coin.id,
       symbol: coin.symbol.toUpperCase(),
       name: coin.name,
       price: coin.current_price,
@@ -223,6 +322,9 @@ async function loadCommodities(): Promise<MarketFeed> {
 
 async function fetchFeed(category: MarketCategory): Promise<MarketFeed> {
   switch (category) {
+    case "stocks":
+    case "etfs":
+      return loadEquities(category);
     case "crypto":
       return loadCrypto();
     case "forex":
@@ -265,6 +367,189 @@ async function getFeed(
     inFlight.delete(category);
   }
 }
+
+const yahooSymbols: Partial<Record<MarketCategory, Record<string, string>>> = {
+  stocks: {
+    AAPL: "AAPL",
+    MSFT: "MSFT",
+    NVDA: "NVDA",
+    AMZN: "AMZN",
+    TSLA: "TSLA",
+  },
+  etfs: {
+    VOO: "VOO",
+    QQQ: "QQQ",
+    VTI: "VTI",
+    SPY: "SPY",
+    IVV: "IVV",
+  },
+  forex: {
+    "EUR-USD": "EURUSD=X",
+    "GBP-USD": "GBPUSD=X",
+    "USD-JPY": "JPY=X",
+    "AUD-USD": "AUDUSD=X",
+    "USD-CAD": "CAD=X",
+    "USD-CHF": "CHF=X",
+    "USD-CNY": "CNY=X",
+    "USD-NGN": "NGN=X",
+  },
+  commodities: {
+    XAU: "GC=F",
+    XAG: "SI=F",
+    XPT: "PL=F",
+    XPD: "PA=F",
+  },
+};
+
+async function loadHistory(
+  category: MarketCategory,
+  symbol: string,
+  days: string,
+): Promise<{ source: string; asOf: string | null; candles: MarketCandle[] }> {
+  if (category === "crypto") {
+    if (!/^[a-z0-9-]{1,80}$/.test(symbol)) {
+      throw new Error("Invalid crypto asset identifier");
+    }
+    type CoinHistory = { prices?: [number, number][] };
+    const history = await fetchJson<CoinHistory>(
+      `https://api.coingecko.com/api/v3/coins/${encodeURIComponent(symbol)}/market_chart?vs_currency=usd&days=${days}`,
+    );
+    const prices = history.prices ?? [];
+    const candles: MarketCandle[] = [];
+    for (let index = 0; index + 1 < prices.length; index += 2) {
+      const group = prices.slice(index, index + 2);
+      const values = group.map((point) => point[1]);
+      const time = Math.floor(group[group.length - 1][0] / 1000);
+      if (values.some((value) => !Number.isFinite(value))) continue;
+      candles.push({
+        time,
+        open: values[0],
+        high: Math.max(...values),
+        low: Math.min(...values),
+        close: values[values.length - 1],
+        vol: null,
+      });
+    }
+    if (candles.length === 0) {
+      throw new Error("CoinGecko returned no historical crypto prices");
+    }
+    return {
+      source: "CoinGecko",
+      asOf: new Date(candles[candles.length - 1].time * 1000).toISOString(),
+      candles,
+    };
+  }
+
+  const yahooSymbol = yahooSymbols[category]?.[symbol];
+  if (!yahooSymbol) {
+    throw new Error(`Unsupported ${category} symbol`);
+  }
+  const chartPeriod: Record<string, { range: string; interval: string }> = {
+    "1": { range: "1d", interval: "5m" },
+    "7": { range: "5d", interval: "15m" },
+    "30": { range: "1mo", interval: "1d" },
+    "90": { range: "3mo", interval: "1d" },
+    "365": { range: "1y", interval: "1wk" },
+  };
+  const { range, interval } = chartPeriod[days];
+  type YahooChartResponse = {
+    chart?: {
+      result?: {
+        meta?: { regularMarketTime?: number };
+        timestamp?: number[];
+        indicators?: {
+          quote?: {
+            open?: (number | null)[];
+            high?: (number | null)[];
+            low?: (number | null)[];
+            close?: (number | null)[];
+            volume?: (number | null)[];
+          }[];
+        };
+      }[];
+      error?: unknown;
+    };
+  };
+  const data = await fetchJson<YahooChartResponse>(
+    `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?range=${range}&interval=${interval}`,
+  );
+  const result = data.chart?.result?.[0];
+  const quote = result?.indicators?.quote?.[0];
+  const timestamps = result?.timestamp ?? [];
+  const opens = quote?.open ?? [];
+  const highs = quote?.high ?? [];
+  const lows = quote?.low ?? [];
+  const closes = quote?.close ?? [];
+  const volumes = quote?.volume ?? [];
+  const candles = timestamps.flatMap((time, index): MarketCandle[] => {
+    const open = opens[index];
+    const high = highs[index];
+    const low = lows[index];
+    const close = closes[index];
+    if (
+      open == null ||
+      high == null ||
+      low == null ||
+      close == null ||
+      ![open, high, low, close].every(Number.isFinite)
+    ) {
+      return [];
+    }
+    return [
+      {
+        time,
+        open,
+        high,
+        low,
+        close,
+        vol: volumes[index] ?? null,
+      },
+    ];
+  });
+  if (candles.length === 0) {
+    throw new Error(`Yahoo Finance returned no ${category} history`);
+  }
+  const updatedAt = result?.meta?.regularMarketTime;
+  return {
+    source: "Yahoo Finance",
+    asOf: updatedAt ? new Date(updatedAt * 1000).toISOString() : null,
+    candles,
+  };
+}
+
+router.get("/markets/:category/history/:symbol/:days", async (req, res): Promise<void> => {
+  const parsedParams = GetMarketHistoryParams.safeParse(req.params);
+  if (!parsedParams.success) {
+    res.status(400).json({ error: "Unsupported market history request." });
+    return;
+  }
+
+  const { category, symbol, days } = parsedParams.data;
+  const cacheKey = `${category}:${symbol}:${days}`;
+  const cached = historyCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    res.json(cached.data);
+    return;
+  }
+
+  try {
+    const result = await loadHistory(category, symbol, days);
+    const data = GetMarketHistoryResponse.parse(result);
+    historyCache.set(cacheKey, {
+      expiresAt: Date.now() + 30_000,
+      data,
+    });
+    res.json(data);
+  } catch (error) {
+    req.log.warn(
+      { category, symbol, days, error },
+      "Market history provider request failed",
+    );
+    res.status(502).json({
+      error: "Historical market data is temporarily unavailable.",
+    });
+  }
+});
 
 router.get("/markets/:category", async (req, res): Promise<void> => {
   const parsedParams = GetMarketFeedParams.safeParse(req.params);
