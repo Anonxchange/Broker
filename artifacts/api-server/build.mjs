@@ -15,7 +15,14 @@ async function buildAll() {
   await rm(distDir, { recursive: true, force: true });
 
   await esbuild({
-    entryPoints: [path.resolve(artifactDir, "src/index.ts")],
+    // The local Replit process needs a listening server; Vercel imports
+    // src/index.ts directly as an Express function.
+    entryPoints: [
+      {
+        in: path.resolve(artifactDir, "src/server.ts"),
+        out: "index",
+      },
+    ],
     platform: "node",
     bundle: true,
     format: "esm",
