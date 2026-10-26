@@ -166,9 +166,34 @@ function buildDashboardDocument() {
       profileControl.appendChild(profileMenu);
       const profileMenuView=profileMenu.querySelector('[data-profile-view="menu"]');
       const notificationsView=profileMenu.querySelector('[data-profile-view="notifications"]');
+      const kycButton=document.createElement("button");
+      kycButton.type="button";
+      kycButton.setAttribute("role","menuitem");
+      kycButton.dataset.profileAction="kyc";
+      kycButton.textContent="KYC verification";
+      profileMenuView.appendChild(kycButton);
+
+      const kycView=document.createElement("div");
+      kycView.className="profile-dropdown__view";
+      kycView.dataset.profileView="kyc";
+      kycView.hidden=true;
+      kycView.innerHTML='<div class="profile-dropdown__identity"><span class="profile-dropdown__initial" aria-hidden="true">2/3</span><div><strong>KYC verification</strong><small>Sample profile status</small></div></div><p class="profile-dropdown__empty">Proof of address is pending. This preview does not collect or store documents.</p>';
+      const kycOpenButton=document.createElement("button");
+      kycOpenButton.type="button";
+      kycOpenButton.setAttribute("role","menuitem");
+      kycOpenButton.dataset.profileAction="kyc-open";
+      kycOpenButton.textContent="Open verification section";
+      const kycBackButton=document.createElement("button");
+      kycBackButton.type="button";
+      kycBackButton.setAttribute("role","menuitem");
+      kycBackButton.dataset.profileAction="kyc-back";
+      kycBackButton.textContent="Back to profile menu";
+      kycView.append(kycOpenButton,kycBackButton);
+      profileMenu.appendChild(kycView);
       const resetProfileMenuView=()=>{
         profileMenuView.hidden=false;
         notificationsView.hidden=true;
+        kycView.hidden=true;
       };
 
       const setProfileMenuOpen=open=>{
@@ -211,6 +236,24 @@ function buildDashboardDocument() {
           notificationsView.hidden=true;
           profileMenuView.hidden=false;
           profileMenu.querySelector('[data-profile-action="notifications"]')?.focus();
+          return;
+        }
+        if(action.dataset.profileAction==="kyc"){
+          profileMenuView.hidden=true;
+          notificationsView.hidden=true;
+          kycView.hidden=false;
+          kycOpenButton.focus();
+          return;
+        }
+        if(action.dataset.profileAction==="kyc-back"){
+          kycView.hidden=true;
+          profileMenuView.hidden=false;
+          kycButton.focus();
+          return;
+        }
+        if(action.dataset.profileAction==="kyc-open"){
+          setProfileMenuOpen(false);
+          document.querySelector('#nav .nav[data-p="Security and verification"]')?.click();
           return;
         }
         setProfileMenuOpen(false);
