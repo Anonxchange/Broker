@@ -3,6 +3,7 @@ import { Router as WouterRouter, useLocation } from 'wouter';
 import AuthPage from './pages/AuthPage';
 import AdminPage from './pages/AdminPage';
 import DashboardPage from './pages/DashboardPage';
+import DepositMethodsPage from './pages/DepositMethodsPage';
 
 const heroBackgrounds = `
   .section-header {
@@ -1422,6 +1423,7 @@ function preparePage(source: string) {
       'Investments',
       'Lending',
       'Market',
+      'Deposit',
       'Resources',
       'Contact',
     ];
@@ -1429,7 +1431,9 @@ function preparePage(source: string) {
       ...navigationItems.map((label) => {
         const link = pageDocument.createElement('a');
         link.className = 'navbar-link w-inline-block';
-        link.href = label === 'Home' ? '#home' : '#';
+        link.href =
+          label === 'Home' ? '#home' : label === 'Deposit' ? '/deposit' : '#';
+        if (label === 'Deposit') link.target = '_top';
         link.textContent = label;
         return link;
       }),
@@ -1668,7 +1672,14 @@ function AppContent() {
     return <AuthPage mode="login" onDemoAccess={startDemoSession} />;
   if (location === '/signup')
     return <AuthPage mode="signup" onDemoAccess={startDemoSession} />;
-  if (location === '/admin') return <AdminPage />;
+  if (
+    location === '/admin' ||
+    location === '/admin/deposit-settings' ||
+    location === '/admin/account-settings'
+  ) {
+    return <AdminPage />;
+  }
+  if (location === '/deposit') return <DepositMethodsPage />;
   if (location === '/dashboard' || location === '/dashboard/profile') {
     if (!hasDemoSession)
       return <AuthPage mode="login" onDemoAccess={startDemoSession} />;
