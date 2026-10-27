@@ -1,5 +1,10 @@
 import { useMemo } from 'react';
 import adminHtml from '@assets/admin_1793083123310.html?raw';
+import {
+  adminEmailBehavior,
+  adminEmailStyles,
+} from './admin-email-composer';
+import { adminManagementBehavior } from './admin-management';
 import './admin-page.css';
 
 const appTypography = `
@@ -278,6 +283,12 @@ function buildAdminDocument() {
     '$("#admin-profile-role").textContent=ROLES[ME.role]?ME.role:"Owner";$("#admin-profile-email").textContent=ME.email;$("#admin-profile-initial").textContent=(ME.email||"A").trim().slice(0,1).toUpperCase();render()',
     'admin profile identity update',
   );
+  html = replaceRequired(
+    html,
+    `f.t==="number"?'step="0.01" min="0"':""`,
+    `f.t==="number"?'step="'+(f.step||"0.01")+'" min="0"':""`,
+    'custom numeric input steps',
+  );
 
   const duplicateNavLine =
     /\n\$\("#nav"\)\.innerHTML=L\.map\(x=>typeof x==="string"\?.*\n(?=const closeSide=)/;
@@ -298,8 +309,11 @@ function buildAdminDocument() {
       '<html lang="en">',
       `<html lang="en" data-theme="${darkMode ? 'dark' : 'light'}">`,
     )
-    .replace('</head>', `<style>${appTypography}</style></head>`)
-    .replace('</body>', `<script>${adminProfileBehavior}</script></body>`);
+    .replace('</head>', `<style>${appTypography}${adminEmailStyles}</style></head>`)
+    .replace(
+      '</body>',
+      `<script>${adminProfileBehavior}</script><script>${adminEmailBehavior}</script><script>${adminManagementBehavior}</script></body>`,
+    );
 }
 
 export default function AdminPage() {
