@@ -990,7 +990,7 @@ function renderInvestorTestimonials(pageDocument: Document) {
 
     const portrait = pageDocument.createElement('img');
     portrait.className = 'investor-testimonial__portrait';
-    portrait.src = testimonial.portrait;
+    portrait.src = `/wealthhub/${testimonial.portrait}`;
     portrait.alt = `Portrait of ${testimonial.author}`;
     portrait.loading = 'lazy';
     portrait.decoding = 'async';
