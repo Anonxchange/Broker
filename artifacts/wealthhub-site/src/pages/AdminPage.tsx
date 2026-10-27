@@ -199,6 +199,14 @@ const adminTopBar = `
             <span class="admin-profile-initial" id="admin-profile-initial" aria-hidden="true">A</span>
             <div><strong id="admin-profile-role">Admin</strong><small id="admin-profile-email"></small></div>
           </div>
+          <button type="button" role="menuitem" data-v="Account settings">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/></svg>
+            <span>Account settings</span>
+          </button>
+          <button type="button" role="menuitem" data-v="Deposit methods">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M17 7H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            <span>Deposit methods</span>
+          </button>
           <button type="button" role="menuitem" data-a="logout">
             <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 17l5-5-5-5M15 12H3"/><path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6"/></svg>
             <span>Sign out</span>
@@ -232,6 +240,9 @@ const adminProfileBehavior = `
     });
     document.addEventListener("click", event => {
       if (!control.contains(event.target)) setOpen(false);
+    });
+    menu.addEventListener("click", event => {
+      if (event.target.closest('[role="menuitem"]')) setOpen(false);
     });
     document.addEventListener("keydown", event => {
       if (event.key === "Escape" && !menu.hidden) {
@@ -280,7 +291,7 @@ function buildAdminDocument() {
   html = replaceRequired(
     html,
     '$("#who").textContent=ME.email+" \\u00b7 "+(ROLES[ME.role]?ME.role:"Owner");render()',
-    '$("#admin-profile-role").textContent=ROLES[ME.role]?ME.role:"Owner";$("#admin-profile-email").textContent=ME.email;$("#admin-profile-initial").textContent=(ME.email||"A").trim().slice(0,1).toUpperCase();render()',
+    'let profileName="";try{profileName=localStorage.getItem("auvrenthia-admin-profile:"+ME.email.toLowerCase())||""}catch(e){}$("#admin-profile-role").textContent=profileName||(ROLES[ME.role]?ME.role:"Owner");$("#admin-profile-email").textContent=ME.email;$("#admin-profile-initial").textContent=(profileName||ME.email||"A").trim().slice(0,1).toUpperCase();render()',
     'admin profile identity update',
   );
   html = replaceRequired(
