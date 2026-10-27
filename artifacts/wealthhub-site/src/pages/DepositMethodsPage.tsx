@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react';
-import { QRCodeSVG } from 'qrcode.react';
+import { useEffect, useRef, useState } from 'react';
 import './deposit-pages.css';
 
 type DepositMethod = {
@@ -9,40 +8,28 @@ type DepositMethod = {
   address: string;
 };
 
+// Edit this list with your real assets, networks and addresses.
+const DEPOSIT_METHODS: DepositMethod[] = [
+  { id: 'btc', asset: 'Bitcoin (BTC)', network: 'Bitcoin', address: 'YOUR_BTC_ADDRESS' },
+  { id: 'eth', asset: 'Ethereum (ETH)', network: 'ERC20', address: 'YOUR_ETH_ADDRESS' },
+  { id: 'usdt', asset: 'Tether (USDT)', network: 'TRC20', address: 'YOUR_USDT_ADDRESS' },
+];
+
+const MAX_QR_SIZE = 5 * 1024 * 1024; // 5 MB
+
 export default function DepositMethodsPage() {
-  const [methods, setMethods] = useState<DepositMethod[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [copyError, setCopyError] = useState('');
   const [copiedId, setCopiedId] = useState('');
+  const [qrImages, setQrImages] = useState<Record<string, string>>({});
+  const [uploadErrors, setUploadErrors] = useState<Record<string, string>>({});
+  const qrImagesRef = useRef(qrImages);
+  qrImagesRef.current = qrImages;
 
+  // Release object URLs when the page unmounts
   useEffect(() => {
-    const controller = new AbortController();
-
-    fetch('/api/deposit-methods', { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) {
-          throw new Error('Deposit methods could not be loaded. Please try again.');
-        }
-        const result: unknown = await response.json();
-        if (!Array.isArray(result)) {
-          throw new Error('The deposit list returned an unexpected response.');
-        }
-        setMethods(result as DepositMethod[]);
-      })
-      .catch((loadError: unknown) => {
-        if (controller.signal.aborted) return;
-        setError(
-          loadError instanceof Error
-            ? loadError.message
-            : 'Deposit methods could not be loaded. Please try again.',
-        );
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-
-    return () => controller.abort();
+    return () => {
+      Object.values(qrImagesRef.current).forEach((url) => URL.revokeObjectURL(url));
+    };
   }, []);
 
   async function copyAddress(method: DepositMethod) {
@@ -54,6 +41,40 @@ export default function DepositMethodsPage() {
     } catch {
       setCopyError('Your browser could not copy the address. Select and copy it instead.');
     }
+  }
+
+  function setUploadError(id: string, message: string) {
+    setUploadErrors((prev) => ({ ...prev, [id]: message }));
+  }
+
+  function handleQrUpload(id: string, file: File | undefined) {
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setUploadError(id, 'Please choose an image file.');
+      return;
+    }
+    if (file.size > MAX_QR_SIZE) {
+      setUploadError(id, 'Image is too large. Maximum size is 5 MB.');
+      return;
+    }
+
+    const url = URL.createObjectURL(file);
+    setQrImages((prev) => {
+      if (prev[id]) URL.revokeObjectURL(prev[id]);
+      return { ...prev, [id]: url };
+    });
+    setUploadError(id, '');
+  }
+
+  function removeQr(id: string) {
+    setQrImages((prev) => {
+      if (prev[id]) URL.revokeObjectURL(prev[id]);
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setUploadError(id, '');
   }
 
   return (
@@ -86,59 +107,94 @@ export default function DepositMethodsPage() {
           </span>
         </div>
 
-        {loading ? (
-          <div className="deposit-page__state" role="status">
-            Loading deposit methods…
-          </div>
-        ) : error ? (
-          <div className="deposit-page__state deposit-page__state--error" role="alert">
-            {error}
-          </div>
-        ) : methods.length === 0 ? (
+        {DEPOSIT_METHODS.length === 0 ? (
           <div className="deposit-page__state">
             No crypto deposit methods are available right now.
           </div>
         ) : (
           <section className="deposit-method-grid" aria-label="Available deposit methods">
-            {methods.map((method) => (
-              <article className="deposit-method-card" key={method.id}>
-                <div className="deposit-method-card__heading">
-                  <div>
-                    <p className="deposit-method-card__label">Asset</p>
-                    <h2>{method.asset}</h2>
+            {DEPOSIT_METHODS.map((method) => {
+              const qrUrl = qrImages[method.id];
+              const inputId = `qr-upload-${method.id}`;
+
+              return (
+                <article className="deposit-method-card" key={method.id}>
+                  <div className="deposit-method-card__heading">
+                    <div>
+                      <p className="deposit-method-card__label">Asset</p>
+                      <h2>{method.asset}</h2>
+                    </div>
+                    <span className="deposit-method-card__network">{method.network}</span>
                   </div>
-                  <span className="deposit-method-card__network">{method.network}</span>
-                </div>
-                <div
-                  className="deposit-method-card__qr"
-                  aria-label={`QR code for ${method.asset} on ${method.network}`}
-                >
-                  <QRCodeSVG
-                    value={method.address}
-                    size={184}
-                    level="M"
-                    includeMargin
-                    title={`${method.asset} deposit address`}
-                  />
-                </div>
-                <div className="deposit-method-card__address">
-                  <span>Deposit address</span>
-                  <code>{method.address}</code>
-                </div>
-                <button
-                  className="deposit-page__copy"
-                  type="button"
-                  onClick={() => void copyAddress(method)}
-                >
-                  {copiedId === method.id ? 'Address copied' : 'Copy address'}
-                </button>
-                {copyError && (
-                  <p className="deposit-method-card__copy-error" role="status">
-                    {copyError}
-                  </p>
-                )}
-              </article>
-            ))}
+
+                  <div className="deposit-method-card__qr">
+                    <input
+                      id={inputId}
+                      className="deposit-method-card__file"
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        handleQrUpload(method.id, e.target.files?.[0]);
+                        e.target.value = ''; // allow re-selecting the same file
+                      }}
+                    />
+
+                    {qrUrl ? (
+                      <>
+                        <img
+                          className="deposit-method-card__qr-image"
+                          src={qrUrl}
+                          alt={`QR code for ${method.asset} on ${method.network}`}
+                        />
+                        <div className="deposit-method-card__qr-actions">
+                          <label htmlFor={inputId} className="deposit-method-card__qr-btn">
+                            Replace
+                          </label>
+                          <button
+                            type="button"
+                            className="deposit-method-card__qr-btn"
+                            onClick={() => removeQr(method.id)}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <label htmlFor={inputId} className="deposit-method-card__upload">
+                        <span className="deposit-method-card__upload-icon" aria-hidden="true">
+                          +
+                        </span>
+                        <span>Click to upload QR code</span>
+                        <small>PNG, JPG or SVG, up to 5 MB</small>
+                      </label>
+                    )}
+
+                    {uploadErrors[method.id] && (
+                      <p className="deposit-method-card__copy-error" role="alert">
+                        {uploadErrors[method.id]}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="deposit-method-card__address">
+                    <span>Deposit address</span>
+                    <code>{method.address}</code>
+                  </div>
+                  <button
+                    className="deposit-page__copy"
+                    type="button"
+                    onClick={() => void copyAddress(method)}
+                  >
+                    {copiedId === method.id ? 'Address copied' : 'Copy address'}
+                  </button>
+                  {copyError && (
+                    <p className="deposit-method-card__copy-error" role="status">
+                      {copyError}
+                    </p>
+                  )}
+                </article>
+              );
+            })}
           </section>
         )}
 
