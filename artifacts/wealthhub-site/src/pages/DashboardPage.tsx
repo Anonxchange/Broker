@@ -6,6 +6,178 @@ type DashboardPageProps = {
   onLogout: () => void;
 };
 
+type MemberDepositMethod = {
+  id: string;
+  asset: string;
+  network: string;
+  address: string;
+  qrDataUrl?: string;
+};
+
+type MemberWalletState = {
+  a: string;
+  net: number;
+  amount: string;
+};
+
+declare const WS: MemberWalletState;
+declare function depositProgress(step: string): string;
+declare function px(asset: string): number;
+declare function fmt(amount: number): string;
+
+function installMemberDepositMethods() {
+  const storageKey = "auvrenthia-deposit-methods-v1";
+  const browserWindow = window as typeof window & {
+    depositChoose?: () => string;
+    depositProof?: () => string;
+    __getSelectedDepositMethod?: () => MemberDepositMethod | null;
+  };
+  const escapeHtml = (value: unknown) =>
+    String(value ?? "").replace(/[&<>"']/g, (character) => {
+      const entities: Record<string, string> = {
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      };
+      return entities[character];
+    });
+  const validQrDataUrl = (value: unknown): value is string =>
+    typeof value === "string" &&
+    value.length <= 720_000 &&
+    /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/.test(value);
+
+  function readDepositMethods(): MemberDepositMethod[] {
+    try {
+      const parsed: unknown = JSON.parse(
+        localStorage.getItem(storageKey) || "[]",
+      );
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter((value): value is MemberDepositMethod => {
+        if (typeof value !== "object" || value === null) return false;
+        const method = value as Record<string, unknown>;
+        return (
+          typeof method.id === "string" &&
+          typeof method.asset === "string" &&
+          method.asset.trim().length > 0 &&
+          typeof method.network === "string" &&
+          method.network.trim().length > 0 &&
+          typeof method.address === "string" &&
+          method.address.trim().length > 0 &&
+          (method.qrDataUrl === undefined || validQrDataUrl(method.qrDataUrl))
+        );
+      });
+    } catch {
+      return [];
+    }
+  }
+
+  function methodsForAsset(asset: string) {
+    return readDepositMethods().filter(
+      (method) =>
+        method.asset.trim().toLowerCase() === asset.trim().toLowerCase(),
+    );
+  }
+
+  function selectedDepositMethod() {
+    const methods = methodsForAsset(WS.a);
+    const selectedIndex = Number.isInteger(WS.net) ? WS.net : 0;
+    return methods[selectedIndex] || methods[0] || null;
+  }
+
+  const originalDepositChoose = browserWindow.depositChoose;
+  if (typeof originalDepositChoose !== "function") return;
+
+  browserWindow.depositChoose = function depositChooseWithAdminMethods() {
+    const methods = readDepositMethods();
+    const assets = Array.from(
+      new Map(
+        methods.map((method) => [method.asset.trim().toLowerCase(), method.asset]),
+      ).values(),
+    );
+    if (assets.length === 0) {
+      return `<div class="deposit-shell">${depositProgress("choose")}<div class="mp"><div class="mph"><div><h3>No deposit methods available</h3><small>An administrator has not configured a deposit destination yet.</small></div></div><div class="deposit-callout"><strong>Preview only</strong><p>No transfer will be submitted or credited in this demo.</p></div><div class="deposit-actions"><button class="btn alt" id="deposit-back-guide">Back</button></div></div></div>`;
+    }
+
+    const selectedAsset =
+      assets.find(
+        (asset) => asset.trim().toLowerCase() === WS.a.trim().toLowerCase(),
+      ) || assets[0];
+    WS.a = selectedAsset;
+    const availableMethods = methodsForAsset(selectedAsset);
+    WS.net = Math.min(
+      Math.max(0, Number.isInteger(WS.net) ? WS.net : 0),
+      Math.max(availableMethods.length - 1, 0),
+    );
+    const selected = availableMethods[WS.net];
+    const networkOptions = availableMethods
+      .map(
+        (method, index) =>
+          `<option value="${index}"${index === WS.net ? " selected" : ""}>${escapeHtml(method.network)}</option>`,
+      )
+      .join("");
+    const assetOptions = assets
+      .map(
+        (asset) =>
+          `<option value="${escapeHtml(asset)}"${asset === selectedAsset ? " selected" : ""}>${escapeHtml(asset)}</option>`,
+      )
+      .join("");
+    const amount = Number(WS.amount) || "";
+    const estimatedValue =
+      amount && px(selectedAsset)
+        ? `≈ ${fmt(Number(amount) * px(selectedAsset))}`
+        : "";
+    const qr = selected?.qrDataUrl
+      ? `<img src="${escapeHtml(selected.qrDataUrl)}" alt="QR code for ${escapeHtml(selected.asset)} on ${escapeHtml(selected.network)}" style="width:132px;height:132px;object-fit:contain;border-radius:10px;background:#fff;padding:6px">`
+      : "";
+
+    return `<div class="deposit-shell">${depositProgress("choose")}<div class="mp"><div class="mph"><div><h3>Choose deposit details</h3><small>Use the destination configured by the admin for this asset and network.</small></div></div><label class="fl" for="wa">Asset</label><select class="sel" id="wa">${assetOptions}</select><label class="fl" for="wn">Network</label><select class="sel" id="wn">${networkOptions}</select>${selected ? `<div class="deposit-callout" style="margin-top:16px"><strong>Deposit destination</strong><p>Only send ${escapeHtml(selected.asset)} using ${escapeHtml(selected.network)}.</p><div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:12px">${qr}<code style="display:block;max-width:100%;overflow-wrap:anywhere;user-select:all">${escapeHtml(selected.address)}</code></div><div class="deposit-actions"><button class="btn alt" id="deposit-method-copy" type="button">Copy address</button></div></div>` : ""}<label class="fl" for="wq">Amount (${escapeHtml(selectedAsset)})</label><div class="amt"><input id="wq" type="number" inputmode="decimal" min="0" step="any" placeholder="0.00" value="${amount}"></div><div class="hint" id="wu">${estimatedValue}</div><div class="err" id="we" role="alert"></div><div class="deposit-callout"><strong>Demo only</strong><p>These are admin-configured instructions for preview. No transaction is submitted or credited.</p></div><div class="deposit-actions"><button class="btn alt" id="deposit-back-guide">Back</button><button class="btn" id="deposit-continue">Continue to receipt</button></div></div></div>`;
+  };
+
+  browserWindow.__getSelectedDepositMethod = selectedDepositMethod;
+  browserWindow.depositProof = function depositProofWithAdminMethod() {
+    const method = selectedDepositMethod();
+    const value = px(WS.a)
+      ? fmt(Number(WS.amount) * px(WS.a))
+      : "Estimate unavailable";
+    const destination = method
+      ? `<div class="deposit-callout"><strong>Selected deposit destination</strong><p>${escapeHtml(method.asset)} · ${escapeHtml(method.network)}</p><code style="display:block;overflow-wrap:anywhere;user-select:all">${escapeHtml(method.address)}</code>${method.qrDataUrl ? `<img src="${escapeHtml(method.qrDataUrl)}" alt="QR code for ${escapeHtml(method.asset)} on ${escapeHtml(method.network)}" style="display:block;width:132px;height:132px;object-fit:contain;margin-top:12px;border-radius:10px;background:#fff;padding:6px">` : ""}</div>`
+      : `<div class="deposit-callout"><strong>No deposit method is available</strong><p>Go back and contact support before continuing.</p></div>`;
+    return `<div class="deposit-shell">${depositProgress("proof")}<div class="mp"><div class="mph"><div><h3>Review and attach your receipt</h3><small>${escapeHtml(WS.a)} · ${escapeHtml(method?.network || "No network selected")} · ${escapeHtml(WS.amount)} ${escapeHtml(WS.a)}</small></div><span class="risk r1">${value}</span></div>${destination}<div class="deposit-callout"><strong>Preview only</strong><p>Do not send funds from this demo. The screenshot is only previewed in this browser and is not uploaded or reviewed.</p></div><label class="receipt-upload" for="deposit-proof"><b>Upload transfer screenshot</b><small class="hint">PNG, JPG, or WebP · up to 8 MB</small><input id="deposit-proof" type="file" accept="image/png,image/jpeg,image/webp" aria-describedby="proof-note"></label><p id="proof-note" class="hint">Your file stays on this page. Only its filename is saved with the local demo request.</p><div id="deposit-proof-preview" class="receipt-preview" hidden></div><p class="err" id="deposit-proof-error" role="alert"></p><div class="deposit-actions"><button class="btn alt" id="deposit-edit">Back to amount</button><button class="btn" id="submit-deposit" disabled>Save demo request</button></div></div></div>`;
+  };
+
+  const misc = document.querySelector("#misc");
+  misc?.addEventListener("click", async (event) => {
+    const target = event.target;
+    const button =
+      target instanceof Element
+        ? target.closest<HTMLButtonElement>("#deposit-method-copy")
+        : null;
+    if (!button) return;
+
+    const method = selectedDepositMethod();
+    if (!method) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(method.address);
+      } else {
+        const temporaryInput = document.createElement("textarea");
+        temporaryInput.value = method.address;
+        temporaryInput.style.position = "fixed";
+        temporaryInput.style.opacity = "0";
+        document.body.append(temporaryInput);
+        temporaryInput.select();
+        document.execCommand("copy");
+        temporaryInput.remove();
+      }
+      button.textContent = "Address copied";
+    } catch {
+      button.textContent = "Select the address to copy";
+    }
+  });
+}
+
 function buildDashboardDocument() {
   const wealthHubTypography = `
     @font-face {
