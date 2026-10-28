@@ -511,25 +511,25 @@ function buildAdminDocument(bootstrap: AdminBootstrap) {
       ME=bootData.me;
       api.createUser=async()=>fail("Users must sign up first. An owner can then assign a staff role.");
       api.deleteUser=async(id)=>{need("users");const u=U(id);u.status="archived";log("User archived",u.email,"Account access archived; auth data retained.");save()};
-      api.decideDep=async(id,approved,note)=>{need("money");const d=DB.deposits.find(x=>x.id===id);if(!d)fail("Deposit request not found.");if(d.status!=="pending")fail("Already reviewed.");d.status=approved?"approved":"declined";d.note=note;log("Preview deposit "+d.status,d.id,"No funds were credited. "+(note||""));save()};
-      api.decideWd=async(id,approved,note)=>{need("money");const w=DB.withdrawals.find(x=>x.id===id);if(!w)fail("Withdrawal request not found.");if(w.status!=="pending")fail("Already reviewed.");w.status=approved?"approved":"declined";w.note=note;log("Preview withdrawal "+w.status,w.id,"No funds were transferred. "+(note||""));save()};
+      api.decideDep=async(id,approved,note)=>{need("money");const d=DB.deposits.find(x=>x.id===id);if(!d)fail("Deposit request not found.");if(d.status!=="pending")fail("Already reviewed.");d.status=approved?"approved":"declined";d.note=note;log("Deposit decision recorded: "+d.status,d.id,"Account balances are not changed automatically. "+(note||""));save()};
+      api.decideWd=async(id,approved,note)=>{need("money");const w=DB.withdrawals.find(x=>x.id===id);if(!w)fail("Withdrawal request not found.");if(w.status!=="pending")fail("Already reviewed.");w.status=approved?"approved":"declined";w.note=note;log("Withdrawal decision recorded: "+w.status,w.id,"No transfer was initiated. "+(note||""));save()};
       api.invite=async(email,role)=>{need("team");const user=DB.users.find(u=>u.email.toLowerCase()===String(email).trim().toLowerCase());if(!user)fail("That person must create an account before you can assign a staff role.");const existing=DB.team.find(x=>x.email.toLowerCase()===user.email.toLowerCase());if(existing)fail("That admin is already on the team.");DB.team.push({id:user.id,email:user.email,role,on:true});log("Staff role assigned",user.email,role);save()};
-      api.reset=()=>fail("Reset is disabled because this console is connected to Supabase accounts.");
-      api.userAction=async(id,action)=>{need("support");const target=U(id);if(!/password/i.test(String(action)))fail("This account action needs a privileged server workflow and is unavailable here.");window.parent.postMessage({type:"auvrenthia-admin-password-reset",userId:id},window.location.origin);log("Password reset requested",target.email,"Supabase reset email requested.");save()};
+      api.reset=()=>fail("Password changes must be completed through account recovery.");
+      api.userAction=async(id,action)=>{need("support");const target=U(id);if(!/password/i.test(String(action)))fail("This action is unavailable. Contact support for assistance.");window.parent.postMessage({type:"auvrenthia-admin-password-reset",userId:id},window.location.origin);log("Password reset requested",target.email,"Password reset email requested.");save()};
       const login=document.querySelector("#login");
       const app=document.querySelector("#app");
       if(login)login.hidden=true;
       if(app){
         app.hidden=false;
         const notice=document.createElement("div");
-        notice.textContent="Connected preview console. Balances and payment actions are demonstrations only; no funds move.";
+        notice.textContent="This console records staff review decisions only. It does not initiate money transfers or change account balances.";
         notice.setAttribute("role","note");
         notice.style.cssText="margin:12px 18px;padding:10px 14px;border:1px solid var(--line);border-radius:10px;color:var(--mute);font-size:13px";
         app.prepend(notice);
       }
       window.addEventListener("message",event=>{
         if(event.source!==window.parent||event.origin!==window.location.origin)return;
-        if(event.data?.type==="auvrenthia-admin-persist-result"&&!event.data.ok)toast(event.data.message||"Supabase could not save this change.");
+        if(event.data?.type==="auvrenthia-admin-persist-result"&&!event.data.ok)toast("This change could not be saved. Please try again.");
       });
       boot();
     })();
@@ -567,7 +567,7 @@ export default function AdminPage() {
     let active = true;
     async function loadAdminData() {
       if (!supabase || !user || !profile) {
-        setPageError('Supabase session is not available.');
+        setPageError('Your session has expired. Sign in again.');
         return;
       }
       const client = supabase;
@@ -604,7 +604,7 @@ export default function AdminPage() {
         dashboardStatesResult.error
       ) {
         setPageError(
-          'Admin data could not be loaded. Run the Supabase setup SQL and check staff access and RLS policies.',
+          'Admin data could not be loaded. Check your access and try again. Contact support if this continues.',
         );
         return;
       }
@@ -662,7 +662,7 @@ export default function AdminPage() {
               });
             if (uploadError) {
               throw new Error(
-                `Could not move a saved QR image into Supabase Storage: ${uploadError.message}`,
+                'Could not save the QR image. Please upload it again.',
               );
             }
             const { error: updateError } = await client
@@ -826,7 +826,7 @@ export default function AdminPage() {
   }, [profile, user]);
 
   async function persistAdminState(nextState: Record<string, unknown>) {
-    if (!supabase) throw new Error('Supabase is not configured.');
+    if (!supabase) throw new Error('Account services are temporarily unavailable.');
     const users = Array.isArray(nextState.users)
       ? (nextState.users as AdminUserRecord[])
       : [];
@@ -1180,7 +1180,7 @@ export default function AdminPage() {
             const message =
               error instanceof Error
                 ? error.message
-                : 'Supabase could not save this admin change.';
+                : 'This admin change could not be saved. Please try again.';
             setPageError(message);
             postResult('auvrenthia-admin-persist-result', false, message);
           });
