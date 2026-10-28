@@ -3,9 +3,11 @@ import harborDashboardHtml from '@assets/Harbor_–_Investing_(1)_1792836967110.
 import {
   serializeInlineScript,
   supabase,
+  supabaseConfigured,
   supabaseImageBucket,
   type AppProfile,
 } from '../lib/supabase';
+import { installMemberDashboardTools } from './member-dashboard-tools';
 import './dashboard-page.css';
 
 type DashboardPageProps = {
@@ -28,6 +30,8 @@ type MemberDashboardState = {
   tx: unknown[];
   wallet: string | null;
   depositRequests: unknown[];
+  watchlist: unknown[];
+  priceAlerts: unknown[];
   [key: string]: unknown;
 };
 
@@ -37,6 +41,8 @@ const EMPTY_DASHBOARD_STATE: MemberDashboardState = {
   tx: [],
   wallet: null,
   depositRequests: [],
+  watchlist: [],
+  priceAlerts: [],
 };
 
 type MemberWalletState = {
@@ -969,7 +975,7 @@ function buildDashboardDocument(
     )
     .replace(
       '</body>',
-      `<script>${marketRequestBridge}try{${profileMenuControl}}catch(error){console.error("Profile menu initialization failed.",error);}try{${headerLogoControl}}catch(error){console.error("Dashboard header initialization failed.",error);}try{(${installMemberDepositMethods.toString()})();}catch(error){console.error("Dashboard action initialization failed.",error);}</script></body>`,
+      `<script>${marketRequestBridge}try{${profileMenuControl}}catch(error){console.error("Profile menu initialization failed.",error);}try{${headerLogoControl}}catch(error){console.error("Dashboard header initialization failed.",error);}try{(${installMemberDepositMethods.toString()})();}catch(error){console.error("Dashboard action initialization failed.",error);}try{(${installMemberDashboardTools.toString()})();}catch(error){console.error("Dashboard navigation initialization failed.",error);}</script></body>`,
     );
 
   const darkMode = document.documentElement.classList.contains('dark');
@@ -1044,6 +1050,12 @@ export default function DashboardPage({
         depositRequests: Array.isArray(savedState.depositRequests)
           ? savedState.depositRequests
           : [],
+        watchlist: Array.isArray(savedState.watchlist)
+          ? savedState.watchlist
+          : [],
+        priceAlerts: Array.isArray(savedState.priceAlerts)
+          ? savedState.priceAlerts
+          : [],
       });
       const resolvedMethods = await Promise.all(
         (methodsResult.data || []).map(async (method) => {
@@ -1113,7 +1125,13 @@ export default function DashboardPage({
           );
         };
         if (!client) {
-          respond(false, undefined, 'Your session has expired. Sign in again.');
+          respond(
+            false,
+            undefined,
+            supabaseConfigured
+              ? 'Your session has expired. Sign in again.'
+              : 'Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY in your deployment environment.',
+          );
           return;
         }
         void client.functions
@@ -1279,7 +1297,9 @@ export default function DashboardPage({
         if (
           !Array.isArray(nextState.plans) ||
           !Array.isArray(nextState.tx) ||
-          !Array.isArray(nextState.depositRequests)
+          !Array.isArray(nextState.depositRequests) ||
+          !Array.isArray(nextState.watchlist) ||
+          !Array.isArray(nextState.priceAlerts)
         ) {
           return;
         }
