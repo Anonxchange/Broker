@@ -145,7 +145,6 @@ function installAdminManagement() {
   const browserWindow = window as typeof window & {
     __adminEmailComposerMarkup?: () => string;
   };
-  const depositMethodsStorageKey = "auvrenthia-deposit-methods-v1";
   const maxDepositQrBytes = 512 * 1024;
   const roundMoney = (amount: number) =>
     Math.round((amount + Number.EPSILON) * 100) / 100;
@@ -205,6 +204,19 @@ function installAdminManagement() {
   };
 
   let sharedDepositMethods: SharedDepositMethod[] = [];
+  const depositMethodsWindow = window as typeof window & {
+    __AUVRENTHIA_DEPOSIT_METHODS__?: unknown;
+  };
+  function publishDepositMethods(methods: SharedDepositMethod[]) {
+    depositMethodsWindow.__AUVRENTHIA_DEPOSIT_METHODS__ = methods;
+    window.parent.postMessage(
+      {
+        type: "auvrenthia-admin-deposit-methods-update",
+        methods,
+      },
+      window.location.origin,
+    );
+  }
   let depositMethodsLoaded = false;
   let depositMethodsLoading = false;
   let depositMethodsError = "";
@@ -236,8 +248,8 @@ function installAdminManagement() {
     depositMethodsLoading = true;
     depositMethodsError = "";
     try {
-      const saved = localStorage.getItem(depositMethodsStorageKey);
-      const methods: unknown = saved ? JSON.parse(saved) : [];
+      const methods: unknown =
+        depositMethodsWindow.__AUVRENTHIA_DEPOSIT_METHODS__ || [];
       if (!Array.isArray(methods) || !methods.every(isSharedDepositMethod)) {
         throw new Error("Saved deposit methods have an unexpected format.");
       }
@@ -942,21 +954,13 @@ function installAdminManagement() {
     const nextMethods = previous
       ? sharedDepositMethods.map((item) => (item.id === id ? method : item))
       : [method, ...sharedDepositMethods];
-    try {
-      localStorage.setItem(
-        depositMethodsStorageKey,
-        JSON.stringify(nextMethods),
-      );
-      sharedDepositMethods = nextMethods;
-      editingDepositMethodId = "";
-      pendingDepositQrDataUrl = null;
-      depositMethodsError = "";
-      depositMethodsNotice = "Deposit method saved in this browser.";
-      render();
-    } catch {
-      if (errorTarget)
-        errorTarget.textContent = "Could not save this method in browser storage.";
-    }
+    publishDepositMethods(nextMethods);
+    sharedDepositMethods = nextMethods;
+    editingDepositMethodId = "";
+    pendingDepositQrDataUrl = null;
+    depositMethodsError = "";
+    depositMethodsNotice = "Saving shared deposit method…";
+    render();
   };
 
   H["deposit-method-remove"] = (button) => {
@@ -975,22 +979,15 @@ function installAdminManagement() {
     const nextMethods = sharedDepositMethods.filter(
       (item) => item.id !== method.id,
     );
-    try {
-      localStorage.setItem(
-        depositMethodsStorageKey,
-        JSON.stringify(nextMethods),
-      );
-      sharedDepositMethods = nextMethods;
-      if (editingDepositMethodId === method.id) {
-        editingDepositMethodId = "";
-        pendingDepositQrDataUrl = null;
-      }
-      depositMethodsNotice = "Deposit method removed from this browser.";
-      depositMethodsError = "";
-      render();
-    } catch {
-      toast("Could not remove this method from browser storage.");
+    publishDepositMethods(nextMethods);
+    sharedDepositMethods = nextMethods;
+    if (editingDepositMethodId === method.id) {
+      editingDepositMethodId = "";
+      pendingDepositQrDataUrl = null;
     }
+    depositMethodsNotice = "Removing shared deposit method…";
+    depositMethodsError = "";
+    render();
   };
 
   H["deposit-method-qr-remove"] = () => {
