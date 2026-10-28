@@ -758,7 +758,7 @@ function installAdminManagement() {
             <input class="sel" id="account-email" value="${esc(email)}" readonly>
           </div>
         </div>
-        <p class="note">Role: ${esc(role)}. This prototype stores your display name in this browser only.</p>
+        <p class="note">Role: ${esc(role)}. Your display name is stored on this device only.</p>
         <div class="acts">
           <button type="button" class="btn" data-a="account-settings-save">Save changes</button>
           <button type="button" class="btn alt" data-a="account-settings-reset">Reset display name</button>
@@ -859,7 +859,7 @@ function installAdminManagement() {
     window.setTimeout(updateDepositQrPreview, 0);
     return (
       hd(
-        "Manage the deposit routes shown in this prototype",
+        "Manage deposit methods available in the member dashboard",
         "Deposit methods",
         `<button type="button" class="btn" data-a="deposit-method-new">New method</button>`,
       ) +
