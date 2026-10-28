@@ -159,9 +159,17 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, []);
 
   const signOut = useCallback(async () => {
-    if (!supabase) return;
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
+    try {
+      if (supabase) {
+        const { error } = await supabase.auth.signOut({ scope: 'local' });
+        if (error) throw error;
+      }
+    } finally {
+      setSession(null);
+      setProfile(null);
+      setProfileError('');
+      setLoading(false);
+    }
   }, []);
 
   const refreshProfile = useCallback(async () => {
