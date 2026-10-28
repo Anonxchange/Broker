@@ -4,6 +4,7 @@ import './auth-page.theme.css';
 
 type AuthPageProps = {
   mode: 'login' | 'signup';
+  audience?: 'member' | 'admin';
   configured: boolean;
   onSubmit: (values: AuthFormValues) => Promise<string | void>;
   onGoogleSignIn: () => Promise<void>;
@@ -75,6 +76,7 @@ function GoogleMark() {
 
 export default function AuthPage({
   mode,
+  audience = 'member',
   configured,
   onSubmit,
   onGoogleSignIn,
@@ -134,11 +136,19 @@ export default function AuthPage({
         <div className="auth-form-wrap">
           <div className="auth-form-heading">
             <span className="auth-form-kicker">{isSignup ? 'CREATE ACCOUNT' : 'WELCOME BACK'}</span>
-            <h1 id="auth-heading">{isSignup ? 'Create your account' : 'Sign in'}</h1>
+            <h1 id="auth-heading">
+              {isSignup
+                ? 'Create your account'
+                : audience === 'admin'
+                  ? 'Admin sign in'
+                  : 'Sign in'}
+            </h1>
             <p>
               {isSignup
                 ? 'Set up your Auvrenthia Markets access.'
-                : 'Sign in to continue to Auvrenthia Markets.'}
+                : audience === 'admin'
+                  ? 'Sign in to manage Auvrenthia Markets.'
+                  : 'Sign in to continue to Auvrenthia Markets.'}
             </p>
           </div>
 
