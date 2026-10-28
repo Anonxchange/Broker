@@ -216,6 +216,38 @@ export const adminFinanceBehavior = `
     save();
   };
 
+  const originalDecideWithdrawal = api.decideWd;
+  api.decideWd = async function(id, approve, note) {
+    const withdrawal = DB.withdrawals.find(payment => payment.id === id);
+    if (!withdrawal || !withdrawal.adminCreated) {
+      return originalDecideWithdrawal.call(api, id, approve, note);
+    }
+    need("money");
+    if (withdrawal.status !== "pending") fail("Already decided.");
+    const user = U(withdrawal.uid);
+    if (approve) {
+      if (DB.settings.wdPaused) fail("Withdrawals are paused.");
+      if (user.status !== "active") fail("This account is on hold or suspended.");
+      if (!user.wd || (DB.settings.needKyc && user.kyc !== "verified")) {
+        fail("This user is not currently eligible for withdrawals.");
+      }
+      const amount = money(withdrawal.usd);
+      if (amount > (Number(user.bal) || 0)) {
+        fail("The user's available balance is too low.");
+      }
+      user.bal = money((Number(user.bal) || 0) - amount);
+      led(user, "withdrawal", -amount, "Admin-created withdrawal " + id + " approved");
+    }
+    withdrawal.status = approve ? "approved" : "declined";
+    withdrawal.note = note;
+    log(
+      "Withdrawal " + withdrawal.status,
+      withdrawal.id,
+      usd(withdrawal.usd) + " " + user.email + ". " + (note || "")
+    );
+    save();
+  };
+
   H.ut = button => {
     UT = button.dataset.k;
     const accrued = UT === "Profit" && accrueUserProfit(U(OPEN), Date.now());
