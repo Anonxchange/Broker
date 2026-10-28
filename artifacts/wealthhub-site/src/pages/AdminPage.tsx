@@ -4,6 +4,7 @@ import {
   adminEmailBehavior,
   adminEmailStyles,
 } from './admin-email-composer';
+import { adminFinanceBehavior } from './admin-finance.behavior';
 import { adminManagementBehavior } from './admin-management';
 import './admin-page.css';
 
@@ -323,7 +324,7 @@ function buildAdminDocument() {
     .replace('</head>', `<style>${appTypography}${adminEmailStyles}</style></head>`)
     .replace(
       '</body>',
-      `<script>${adminProfileBehavior}</script><script>${adminEmailBehavior}</script><script>${adminManagementBehavior}</script></body>`,
+      `<script>${adminProfileBehavior}</script><script>${adminEmailBehavior}</script><script>${adminFinanceBehavior}</script><script>${adminManagementBehavior}</script></body>`,
     );
 }
 
