@@ -502,7 +502,7 @@ function buildDashboardDocument(
     .profile-control .av {
       cursor: pointer;
     }
-    .profile-control .av:focus-visible {
+    .profile-trigger:focus-visible {
       outline: 2px solid var(--brand);
       outline-offset: 3px;
     }
@@ -556,6 +556,19 @@ function buildDashboardDocument(
       color: var(--mute);
       font-size: 12px;
     }
+    .profile-trigger {
+      display: grid;
+      width: 36px;
+      height: 36px;
+      place-items: center;
+      padding: 0;
+      border: 0;
+      border-radius: 50%;
+      background: transparent;
+    }
+    .profile-trigger .av {
+      pointer-events: none;
+    }
     .profile-dropdown button {
       display: flex;
       width: 100%;
@@ -590,15 +603,27 @@ function buildDashboardDocument(
     }
   `;
   const profileMenuControl = `
-    const memberAvatar=document.querySelector(".top .av");
-    if(memberAvatar){
+    const memberAvatar=document.querySelector(".top .av")||document.querySelector(".av");
+    if(!memberAvatar||!memberAvatar.parentNode){
+      console.error("Dashboard profile menu could not find the avatar in the header.");
+    }else{
       const profileControl=document.createElement("div");
       profileControl.className="profile-control";
+      const profileTrigger=document.createElement("button");
+      profileTrigger.type="button";
+      profileTrigger.className="profile-trigger";
+      profileTrigger.setAttribute("aria-label","Open profile menu");
+      profileTrigger.setAttribute("aria-haspopup","menu");
+      profileTrigger.setAttribute("aria-expanded","false");
+      profileTrigger.title="Profile and account settings";
+      memberAvatar.setAttribute("aria-hidden","true");
       memberAvatar.parentNode.insertBefore(profileControl,memberAvatar);
-      profileControl.appendChild(memberAvatar);
+      profileControl.appendChild(profileTrigger);
+      profileTrigger.appendChild(memberAvatar);
 
       const profileMenu=document.createElement("div");
       profileMenu.className="profile-dropdown";
+      profileMenu.id="member-profile-menu";
       profileMenu.setAttribute("role","menu");
       profileMenu.hidden=true;
       profileMenu.innerHTML='<div class="profile-dropdown__view" data-profile-view="menu"><div class="profile-dropdown__identity"><span class="profile-dropdown__initial" aria-hidden="true">A</span><div><strong>Profile</strong><small>Manage your account</small></div></div><button type="button" role="menuitem" data-profile-action="notifications"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 20a2 2 0 0 0 4 0"/></svg><span>Notifications</span></button><button type="button" role="menuitem" data-profile-action="settings">Account settings</button><button type="button" role="menuitem" data-profile-action="statements">Statements and tax</button><button type="button" role="menuitem" data-profile-action="rewards">Rewards</button><div class="profile-dropdown__divider"></div><button type="button" role="menuitem" data-profile-action="signout">Sign out</button></div><div class="profile-dropdown__view" data-profile-view="notifications" hidden><button type="button" role="menuitem" data-profile-action="back"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6M9 12h11"/></svg><span>Back to profile menu</span></button><p class="profile-dropdown__empty">No new notifications.</p></div>';
@@ -622,14 +647,47 @@ function buildDashboardDocument(
       kycButton.type="button";
       kycButton.setAttribute("role","menuitem");
       kycButton.dataset.profileAction="kyc";
-      kycButton.textContent="KYC verification";
+      kycButton.textContent="Identity verification";
       profileMenuView.appendChild(kycButton);
 
       const kycView=document.createElement("div");
       kycView.className="profile-dropdown__view";
       kycView.dataset.profileView="kyc";
       kycView.hidden=true;
-      kycView.innerHTML='<div class="profile-dropdown__identity"><span class="profile-dropdown__initial" aria-hidden="true">2/3</span><div><strong>Verification tiers</strong><small>Tier 2 of 3 · sample profile</small></div></div><p class="profile-dropdown__empty">Tier 1 email and Tier 2 face checks are marked complete in this sample. Tier 3 requires a government ID showing the current address. This preview does not perform checks or collect documents.</p>';
+      const kycStates={
+        none:{icon:"!",title:"Verification not started",detail:"No verification request has been submitted."},
+        pending:{icon:"…",title:"Under review",detail:"Your verification submission is being reviewed."},
+        verified:{icon:"✓",title:"Verified",detail:"Your identity verification is complete."},
+        rejected:{icon:"!",title:"Action required",detail:"Contact support for next steps."}
+      };
+      const kycState=kycStates[String(authProfile?.kyc_status||"none")]||kycStates.none;
+      const verificationPanel=document.querySelector('[data-testid="verification-progress"]');
+      if(verificationPanel){
+        const actionButton=verificationPanel.querySelector("button");
+        const verificationTitle=document.createElement("b");
+        verificationTitle.textContent="Identity verification · "+kycState.title;
+        const verificationDetail=document.createElement("span");
+        verificationDetail.textContent=kycState.detail;
+        verificationPanel.replaceChildren(verificationTitle,verificationDetail);
+        if(actionButton)verificationPanel.appendChild(actionButton);
+      }
+      const kycIdentity=document.createElement("div");
+      kycIdentity.className="profile-dropdown__identity";
+      const kycIcon=document.createElement("span");
+      kycIcon.className="profile-dropdown__initial";
+      kycIcon.setAttribute("aria-hidden","true");
+      kycIcon.textContent=kycState.icon;
+      const kycIdentityText=document.createElement("div");
+      const kycTitle=document.createElement("strong");
+      kycTitle.textContent=kycState.title;
+      const kycSubtitle=document.createElement("small");
+      kycSubtitle.textContent="Identity verification";
+      kycIdentityText.append(kycTitle,kycSubtitle);
+      kycIdentity.append(kycIcon,kycIdentityText);
+      const kycDescription=document.createElement("p");
+      kycDescription.className="profile-dropdown__empty";
+      kycDescription.textContent=kycState.detail;
+      kycView.append(kycIdentity,kycDescription);
       const kycOpenButton=document.createElement("button");
       kycOpenButton.type="button";
       kycOpenButton.setAttribute("role","menuitem");
@@ -650,32 +708,24 @@ function buildDashboardDocument(
 
       const setProfileMenuOpen=open=>{
         profileMenu.hidden=!open;
-        memberAvatar.setAttribute("aria-expanded",String(open));
+        profileTrigger.setAttribute("aria-expanded",String(open));
       };
       const toggleProfileMenu=()=>{
         const open=profileMenu.hidden;
         if(open)resetProfileMenuView();
         setProfileMenuOpen(open);
       };
-      memberAvatar.setAttribute("role","button");
-      memberAvatar.setAttribute("tabindex","0");
-      memberAvatar.setAttribute("aria-label","Open profile menu");
-      memberAvatar.setAttribute("aria-haspopup","menu");
-      memberAvatar.setAttribute("aria-expanded","false");
-      memberAvatar.title="Profile and account settings";
-      memberAvatar.addEventListener("click",event=>{
+      profileTrigger.setAttribute("aria-controls",profileMenu.id);
+      profileTrigger.addEventListener("click",event=>{
         event.stopPropagation();
         toggleProfileMenu();
       });
-      memberAvatar.addEventListener("keydown",event=>{
-        if(event.key==="Enter"||event.key===" "){
-          event.preventDefault();
-          toggleProfileMenu();
-        }
+      profileTrigger.addEventListener("keydown",event=>{
         if(event.key==="ArrowDown"){event.preventDefault();resetProfileMenuView();setProfileMenuOpen(true);profileMenu.querySelector('[data-profile-action="notifications"]')?.focus()}
       });
       profileMenu.addEventListener("click",event=>{
-        const action=event.target.closest("[data-profile-action]");
+        const clickedElement=event.target instanceof Element?event.target:null;
+        const action=clickedElement?.closest("[data-profile-action]");
         if(!action)return;
         event.stopPropagation();
         if(action.dataset.profileAction==="notifications"){
@@ -710,7 +760,7 @@ function buildDashboardDocument(
         }
         setProfileMenuOpen(false);
         if(action.dataset.profileAction==="signout"){
-          window.parent.postMessage({type:"auvrenthia-member-logout"},"*");
+          window.parent.postMessage({type:"auvrenthia-member-logout"},window.location.origin);
           return;
         }
         const destinations={settings:"Security and verification",statements:"Statements and tax",rewards:"Rewards"};
@@ -721,9 +771,27 @@ function buildDashboardDocument(
         if(!profileControl.contains(event.target))setProfileMenuOpen(false);
       });
       document.addEventListener("keydown",event=>{
-        if(event.key==="Escape"){setProfileMenuOpen(false);memberAvatar.focus()}
+        if(event.key==="Escape"&&!profileMenu.hidden){setProfileMenuOpen(false);profileTrigger.focus()}
       });
     }
+  `;
+  const marketRequestBridge = `
+    window.__AUVRENTHIA_MARKET_REQUEST__=function(payload){
+      return new Promise((resolve,reject)=>{
+        const requestId=typeof crypto!=="undefined"&&typeof crypto.randomUUID==="function"?crypto.randomUUID():String(Date.now())+"-"+String(Math.random()).slice(2);
+        const finish=(handler,value)=>{window.clearTimeout(timeout);window.removeEventListener("message",onMessage);handler(value)};
+        const onMessage=event=>{
+          if(event.source!==window.parent||event.origin!==window.location.origin)return;
+          const response=event.data;
+          if(response?.type!=="auvrenthia-market-response"||response.requestId!==requestId)return;
+          if(response.ok)finish(resolve,response.data);
+          else finish(reject,new Error(response.error||"Market data is temporarily unavailable."));
+        };
+        const timeout=window.setTimeout(()=>finish(reject,new Error("Market data request timed out.")),20000);
+        window.addEventListener("message",onMessage);
+        window.parent.postMessage({type:"auvrenthia-market-request",requestId,payload},window.location.origin);
+      });
+    };
   `;
   const headerLogoControl = `
     const dashboardTitle=document.querySelector("#title");
@@ -741,6 +809,55 @@ function buildDashboardDocument(
   `;
   let html = harborDashboardHtml
     .replace('<title>Harbor – Investing</title>', '<title>Auvrenthia Markets</title>')
+    .replaceAll('Sample only', 'Varies by network')
+    .replaceAll('Not in this prototype yet', 'Feature unavailable')
+    .replaceAll('Verification · Tier 2 of 3', 'Identity verification')
+    .replaceAll(
+      'Tier 1 email and Tier 2 face checks are complete in this sample. Tier 3 requires a government ID showing your current address.',
+      'Contact support to confirm your identity verification requirements.',
+    )
+    .replaceAll(
+      'This screen hasn’t been designed yet. Portfolio, the market pages and Investment plans are the working ones.',
+      'This feature is currently unavailable. Please contact support for assistance.',
+    )
+    .replaceAll(
+      'Rates are illustrative estimates, not guarantees. All plans here are samples.',
+      'Plan options and projected returns are illustrative. Returns are not guaranteed.',
+    )
+    .replaceAll(
+      'This is a sample, so no real money moved.',
+      'No payment or transfer was initiated.',
+    )
+    .replaceAll(
+      'Live. Demo speed: 1 second equals 1 day',
+      'Illustrative plan activity · not live performance',
+    )
+    .replaceAll(
+      'No investment plans in this preview yet.',
+      'No investment plans are available yet.',
+    )
+    .replaceAll(
+      'Live prices need a data connection, so sample prices are shown.',
+      'Live market data is temporarily unavailable.',
+    )
+    .replaceAll(
+      'sample address for the prototype',
+      'payment details for your selected method',
+    )
+    .replaceAll('Confirm deposit (demo)', 'Submit deposit request')
+    .replace(
+      'Network fee (sample): ${fmt(FEE[a])}',
+      'Network fee: Confirm the current fee with your network or provider.',
+    )
+    .replaceAll(
+      'Other options connect a demo address in this prototype.',
+      'Wallet connections are currently unavailable.',
+    )
+    .replaceAll('· sample headline', '· illustrative headline')
+    .replace(
+      'Live chart unavailable, showing sample candles ("+lerr+")',
+      'Live chart data is temporarily unavailable.',
+    )
     .replace(
       '<div class="logo">Harbor</div>',
       '<div class="logo"><img src="/wealthhub/auvrenthia-logo.svg" alt="Auvrenthia Markets" class="dashboard-brand-mark" /></div>',
@@ -772,7 +889,7 @@ function buildDashboardDocument(
     )
     .replace(
       /async function loadPublic\(\)\{[\s\S]*?\}\ntickRender\(\);/,
-      'async function loadPublic(category){const key={"Stocks":"stocks","ETFs":"etfs","Crypto":"crypto","Forex":"forex","Commodities":"commodities"}[category];if(!key)return;MARKET_STATUS[category]="Loading live market data…";try{const response=await fetch("/api/markets/"+key,{cache:"no-store"});const feed=await response.json();if(!response.ok||!feed||!Array.isArray(feed.assets))throw new Error(feed&&feed.error||"Market feed unavailable");const clean=value=>String(value??"").replace(/[&<>"]/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;", "\\"":"&quot;"}[ch]));D[category]=feed.assets.map(asset=>{if(asset.icon)MARKET_ICONS[asset.symbol]=asset.icon;return[clean(asset.symbol),clean(asset.name),asset.price,asset.change24h,asset.sparkline||[],asset.id||null]});MARKET_META[category]={source:feed.source,asOf:feed.asOf,stale:feed.stale};MARKET_STATUS[category]=feed.source+" · updated "+(feed.asOf?new Date(feed.asOf).toLocaleString():"just now")+(feed.stale?" · showing cached data":"");if(category==="Crypto")LIVE={ok:true,msg:MARKET_STATUS[category]}}catch(error){D[category]=[];MARKET_META[category]=null;MARKET_STATUS[category]="Live data is unavailable; no sample prices are being shown.";if(category==="Crypto")LIVE={ok:false,msg:MARKET_STATUS[category]}}tickRender();renderRail();renderList();if(page===category)renderMkt(category)}\ntickRender();',
+      'async function loadPublic(category){const key={"Stocks":"stocks","ETFs":"etfs","Crypto":"crypto","Forex":"forex","Commodities":"commodities"}[category];if(!key)return;MARKET_STATUS[category]="Loading live market data…";try{const feed=await window.__AUVRENTHIA_MARKET_REQUEST__({action:"feed",category:key});if(!feed||!Array.isArray(feed.assets))throw new Error(feed&&feed.error||"Market feed unavailable");const clean=value=>String(value??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll(String.fromCharCode(34),"&quot;");D[category]=feed.assets.map(asset=>{if(asset.icon)MARKET_ICONS[asset.symbol]=asset.icon;return[clean(asset.symbol),clean(asset.name),asset.price,asset.change24h,asset.sparkline||[],asset.id||null]});MARKET_META[category]={source:feed.source,asOf:feed.asOf,stale:feed.stale};MARKET_STATUS[category]=feed.source+" · updated "+(feed.asOf?new Date(feed.asOf).toLocaleString():"just now")+(feed.stale?" · showing cached data":"");if(category==="Crypto")LIVE={ok:true,msg:MARKET_STATUS[category]}}catch(error){D[category]=[];MARKET_META[category]=null;MARKET_STATUS[category]="Live market data is temporarily unavailable.";if(category==="Crypto")LIVE={ok:false,msg:MARKET_STATUS[category]}}tickRender();renderRail();renderList();if(page===category)renderMkt(category)}\ntickRender();',
     )
     .replace(
       'if(ism)renderMkt(page);if(ms)',
@@ -788,7 +905,7 @@ function buildDashboardDocument(
     )
     .replace(
       'let live=null,lerr=null;if(D[k][0][5]){try{live=await liveCandles(D[k].find(r=>r[0]===sym)[5],LD)}catch(e){lerr=e&&e.code||"error"}if(tok!==TOK)return}',
-      'let live=null,lerr=null;try{const symbol=(D[k].find(r=>r[0]===sym)||[])[5]||sym.replace("/","-");const category={"Stocks":"stocks","ETFs":"etfs","Crypto":"crypto","Forex":"forex","Commodities":"commodities"}[k];const response=await fetch("/api/markets/"+category+"/history/"+encodeURIComponent(symbol)+"/"+LD,{cache:"no-store"});if(!response.ok)throw new Error("Historical data unavailable");const history=await response.json();live=history.candles;if(!Array.isArray(live)||live.length===0)throw new Error("No historical data returned")}catch(e){lerr=e&&e.message||"error"}if(tok!==TOK)return',
+      'let live=null,lerr=null;try{const symbol=(D[k].find(r=>r[0]===sym)||[])[5]||sym.replace("/","-");const category={"Stocks":"stocks","ETFs":"etfs","Crypto":"crypto","Forex":"forex","Commodities":"commodities"}[k];const history=await window.__AUVRENTHIA_MARKET_REQUEST__({action:"history",category,symbol,days:LD});live=history&&history.candles;if(!Array.isArray(live)||live.length===0)throw new Error("No historical data returned")}catch(e){lerr=e&&e.message||"error"}if(tok!==TOK)return',
     )
     .replace(
       'const up=css("--up"),dn=css("--dn"),d=live||cd(p,sym.length*977+sym.charCodeAt(0),TF,140);',
@@ -828,7 +945,7 @@ function buildDashboardDocument(
     )
     .replace(
       'ST.wallet=(await window.ethereum.request({method:"eth_requestAccounts"}))[0]',
-      'throw new Error("Wallet connection is disabled in this preview.")',
+      'throw new Error("Wallet connections are currently unavailable.")',
     )
     .replace(
       'let ST={cash0:2400,plans:[],tx:[],wallet:null,depositRequests:[]}',
@@ -852,7 +969,7 @@ function buildDashboardDocument(
     )
     .replace(
       '</body>',
-      `<script>(${installMemberDepositMethods.toString()})();${profileMenuControl}${headerLogoControl}</script></body>`,
+      `<script>${marketRequestBridge}try{${profileMenuControl}}catch(error){console.error("Profile menu initialization failed.",error);}try{${headerLogoControl}}catch(error){console.error("Dashboard header initialization failed.",error);}try{(${installMemberDepositMethods.toString()})();}catch(error){console.error("Dashboard action initialization failed.",error);}</script></body>`,
     );
 
   const darkMode = document.documentElement.classList.contains('dark');
@@ -884,7 +1001,7 @@ export default function DashboardPage({
     let active = true;
     async function loadDashboardData() {
       if (!supabase) {
-        setLoadError('Supabase is not configured for this deployment.');
+        setLoadError('Account services are temporarily unavailable. Please try again later.');
         setReady(true);
         return;
       }
@@ -908,7 +1025,7 @@ export default function DashboardPage({
 
       if (stateResult.error || methodsResult.error) {
         setLoadError(
-          'Dashboard data could not be loaded. Run the Supabase setup SQL and check the RLS policies.',
+          'We could not load your dashboard. Please refresh or contact support if this continues.',
         );
         setReady(true);
         return;
@@ -955,11 +1072,8 @@ export default function DashboardPage({
 
     void loadDashboardData().catch((error: unknown) => {
       if (active) {
-        setLoadError(
-          error instanceof Error
-            ? error.message
-            : 'Dashboard data could not be loaded.',
-        );
+        console.error('Member dashboard data could not be loaded.', error);
+        setLoadError('We could not load your dashboard. Please try again.');
         setReady(true);
       }
     });
@@ -999,7 +1113,7 @@ export default function DashboardPage({
           );
         };
         if (!client) {
-          respond(false, undefined, 'Supabase session is not available.');
+          respond(false, undefined, 'Your session has expired. Sign in again.');
           return;
         }
         void client.functions
@@ -1050,7 +1164,7 @@ export default function DashboardPage({
         if (!client || !(proof instanceof File) || !method) {
           respond(
             false,
-            'The payment method or Supabase session is unavailable. Refresh and try again.',
+            'We could not submit your request. Please check the details and try again.',
           );
           return;
         }
@@ -1190,7 +1304,7 @@ export default function DashboardPage({
               throw error;
             }
           } catch (error: unknown) {
-            setSaveError('Your dashboard changes could not be saved to Supabase.');
+          setSaveError('Your dashboard changes could not be saved. Please try again.');
             console.error('Supabase dashboard-state save failed.', error);
           }
         })();
