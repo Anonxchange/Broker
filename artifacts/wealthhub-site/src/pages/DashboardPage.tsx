@@ -1155,7 +1155,27 @@ export default function DashboardPage({
             );
           });
       } else if (event.data?.type === 'auvrenthia-member-logout') {
-        onLogout();
+        // DEBUG-LOGOUT-START (temporary, remove later)
+        alert('DEBUG: logout message received');
+        void (async () => {
+          try {
+            if (supabase) {
+              const { error } = await supabase.auth.signOut({ scope: 'local' });
+              if (error) alert('DEBUG: signOut error: ' + error.message);
+            } else {
+              alert('DEBUG: supabase client is not configured');
+            }
+          } catch (signOutError) {
+            alert('DEBUG: signOut crashed: ' + String(signOutError));
+          }
+          try {
+            onLogout();
+          } catch (logoutError) {
+            alert('DEBUG: onLogout crashed: ' + String(logoutError));
+          }
+          window.location.reload();
+        })();
+        // DEBUG-LOGOUT-END
       } else if (
         event.data?.type === 'auvrenthia-member-deposit-submit'
       ) {
