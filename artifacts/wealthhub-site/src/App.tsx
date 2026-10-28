@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Router as WouterRouter, useLocation } from 'wouter';
 import AuthPage, { type AuthFormValues } from './pages/AuthPage';
 import AdminPage from './pages/AdminPage';
@@ -1617,6 +1617,16 @@ function AppContent() {
   } = useAuth();
 
   const authMode = location === '/signup' ? 'signup' : 'login';
+  const handleLogout = useCallback(async () => {
+    try {
+      await signOut();
+    } catch (error) {
+      console.error('Supabase sign out failed.', error);
+    } finally {
+      setLocation('/');
+    }
+  }, [setLocation, signOut]);
+
   const submitAuth = async (values: AuthFormValues) => {
     if (authMode === 'login') {
       await signIn(values.email, values.password);
@@ -1758,7 +1768,7 @@ function AppContent() {
             <p>Contact support before using this account.</p>
             <button
               className="auth-submit"
-              onClick={() => void signOut().then(() => setLocation('/'))}
+              onClick={() => void handleLogout()}
             >
               Sign out
             </button>
@@ -1768,7 +1778,7 @@ function AppContent() {
     }
     return (
       <DashboardPage
-        onLogout={() => void signOut().then(() => setLocation('/'))}
+        onLogout={handleLogout}
         profile={profile}
         userId={session.user.id}
       />
