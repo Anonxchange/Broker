@@ -349,7 +349,7 @@ function buildDashboardDocument() {
       kycView.className="profile-dropdown__view";
       kycView.dataset.profileView="kyc";
       kycView.hidden=true;
-      kycView.innerHTML='<div class="profile-dropdown__identity"><span class="profile-dropdown__initial" aria-hidden="true">2/3</span><div><strong>KYC verification</strong><small>Sample profile status</small></div></div><p class="profile-dropdown__empty">Proof of address is pending. This preview does not collect or store documents.</p>';
+      kycView.innerHTML='<div class="profile-dropdown__identity"><span class="profile-dropdown__initial" aria-hidden="true">2/3</span><div><strong>Verification tiers</strong><small>Tier 2 of 3 · sample profile</small></div></div><p class="profile-dropdown__empty">Tier 1 email and Tier 2 face checks are marked complete in this sample. Tier 3 requires a government ID showing the current address. This preview does not perform checks or collect documents.</p>';
       const kycOpenButton=document.createElement("button");
       kycOpenButton.type="button";
       kycOpenButton.setAttribute("role","menuitem");
