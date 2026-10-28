@@ -40,6 +40,12 @@ type AdminPayment = {
   note: string;
   tx?: string;
   to?: string;
+  memberRequest?: boolean;
+  memberRequestId?: string;
+  receiptPath?: string;
+  receiptUrl?: string;
+  receiptName?: string;
+  receiptError?: string;
 };
 
 type AdminTicket = {
@@ -63,6 +69,7 @@ type SharedDepositMethod = {
   network: string;
   address: string;
   qrDataUrl?: string;
+  qrStoragePath?: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -228,6 +235,20 @@ function installAdminManagement() {
     if (typeof value !== "object" || value === null) return false;
     const method = value as Record<string, unknown>;
     const qrDataUrl = method.qrDataUrl;
+    const qrStoragePath = method.qrStoragePath;
+    const validQrUrl = (value: string) => {
+      try {
+        const url = new URL(value);
+        return (
+          value.length <= 4_096 &&
+          url.protocol === "https:" &&
+          url.hostname.endsWith(".supabase.co") &&
+          url.pathname.includes("/storage/v1/object/sign/")
+        );
+      } catch {
+        return false;
+      }
+    };
     return (
       typeof method.id === "string" &&
       typeof method.asset === "string" &&
@@ -235,12 +256,15 @@ function installAdminManagement() {
       typeof method.address === "string" &&
       typeof method.createdAt === "string" &&
       typeof method.updatedAt === "string" &&
+      (qrStoragePath === undefined ||
+        (typeof qrStoragePath === "string" && qrStoragePath.length <= 512)) &&
       (qrDataUrl === undefined ||
         (typeof qrDataUrl === "string" &&
-          qrDataUrl.length <= 720_000 &&
-          /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/.test(
-            qrDataUrl,
-          )))
+          ((qrDataUrl.length <= 720_000 &&
+            /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/.test(
+              qrDataUrl,
+            )) ||
+            validQrUrl(qrDataUrl))))
     );
   }
 
@@ -333,7 +357,7 @@ function installAdminManagement() {
     }
     if (!file.size || file.size > maxDepositQrBytes) {
       setDepositQrStatus(
-        "Choose a QR image smaller than 512 KB for this browser preview.",
+        "Choose a QR image smaller than 512 KB for secure storage.",
         true,
       );
       return;
@@ -694,7 +718,26 @@ function installAdminManagement() {
     };
   }
 
-  if (V.Deposits) V.Deposits = withPaymentAction(V.Deposits, "deposit");
+  if (V.Deposits) {
+    const depositView = withPaymentAction(V.Deposits, "deposit");
+    V.Deposits = () => {
+      const records = DB.deposits.filter((record) => record.memberRequest);
+      const receiptCards = records.length
+        ? records
+            .map((record) => {
+              const user = DB.users.find((item) => item.id === record.uid);
+              const receiptUrl = safeKycDocumentUrl(record.receiptUrl);
+              const image = receiptUrl
+                ? `<a href="${esc(receiptUrl)}" target="_blank" rel="noopener noreferrer" aria-label="Open full payment receipt"><img src="${esc(receiptUrl)}" alt="Payment receipt for ${esc(user?.name || user?.email || record.uid)}" loading="lazy" style="display:block;width:150px;height:120px;object-fit:contain;border:1px solid var(--line);border-radius:10px;background:#fff"></a><a href="${esc(receiptUrl)}" target="_blank" rel="noopener noreferrer">Open full image</a>`
+                : `<p class="note" role="status">${esc(record.receiptError || "Receipt preview unavailable.")}</p>`;
+              return `<article style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--panel)"><div style="min-width:180px;flex:1"><strong>${esc(user?.name || user?.email || record.uid)}</strong><div class="note">${esc(record.asset)} · ${esc(record.net)} · ${esc(record.amt)} ${esc(record.asset)}</div><div class="note">${esc(record.status)} · ${esc(dt(record.t))}</div></div><div>${image}</div></article>`;
+            })
+            .join("")
+        : '<p class="note">No member payment receipts have been submitted yet.</p>';
+      const receiptSection = `<section style="margin-bottom:20px;padding:16px;border:1px solid var(--line);border-radius:14px;background:var(--panel)"><h3 style="margin:0 0 12px">Submitted payment receipts</h3><div style="display:grid;gap:12px">${receiptCards}</div></section>`;
+      return `${receiptSection}${depositView()}`;
+    };
+  }
   if (V.Withdrawals)
     V.Withdrawals = withPaymentAction(V.Withdrawals, "withdrawal");
 
@@ -859,7 +902,7 @@ function installAdminManagement() {
             <button type="button" class="btn" data-a="deposit-method-save"${blocked ? " disabled" : ""}>Save method</button>
             <button type="button" class="btn alt" data-a="deposit-method-new">Clear</button>
           </div>
-          <p class="note">Methods and QR previews are saved in this browser only; they are not published to customer deposit screens.</p>
+          <p class="note">Active methods appear in customer deposit screens. QR images and payment receipts are stored privately in the Supabase Images bucket.</p>
         </section>
       </div>`
     );
@@ -942,6 +985,10 @@ function installAdminManagement() {
       pendingDepositQrDataUrl === null
         ? previous?.qrDataUrl
         : pendingDepositQrDataUrl || undefined;
+    const qrStoragePath =
+      pendingDepositQrDataUrl === null
+        ? previous?.qrStoragePath || ""
+        : "";
     const method: SharedDepositMethod = {
       id,
       asset,
@@ -949,6 +996,7 @@ function installAdminManagement() {
       address,
       createdAt: previous?.createdAt || now,
       updatedAt: now,
+      qrStoragePath,
       ...(qrDataUrl ? { qrDataUrl } : {}),
     };
     const nextMethods = previous
@@ -971,7 +1019,7 @@ function installAdminManagement() {
     if (!method) return;
     if (
       !window.confirm(
-        `Remove ${method.asset} on ${method.network} from this browser?`,
+        `Remove ${method.asset} on ${method.network} and its QR image from active deposit methods?`,
       )
     ) {
       return;
