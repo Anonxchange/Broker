@@ -1684,6 +1684,7 @@ function AppContent() {
       return (
         <AuthPage
           mode="login"
+          audience="admin"
           configured={configured}
           onSubmit={submitAuth}
           onGoogleSignIn={signInWithGoogle}
@@ -1694,8 +1695,8 @@ function AppContent() {
       return (
         <main className="auth-shell">
           <section className="auth-card">
-            <h1>Account setup required</h1>
-            <p role="alert">{profileError || 'Your Supabase profile is not available.'}</p>
+            <h1>Account information unavailable</h1>
+            <p role="alert">We could not load your account information. Please try again or contact support.</p>
           </section>
         </main>
       );
@@ -1743,8 +1744,8 @@ function AppContent() {
       return (
         <main className="auth-shell">
           <section className="auth-card">
-            <h1>Account setup required</h1>
-            <p role="alert">{profileError || 'Your Supabase profile is not available.'}</p>
+            <h1>Account information unavailable</h1>
+            <p role="alert">We could not load your account information. Please try again or contact support.</p>
           </section>
         </main>
       );
