@@ -129,7 +129,7 @@ declare const log: (action: string, target: string, details: string) => void;
 declare const U: (id: string) => AdminUser;
 declare const count: () => { Support: number; Verification: number };
 declare const tabs: (key: string, items: string[][]) => string;
-declare const hd: (label: string, title: string) => string;
+declare const hd: (label: string, title: string, actions?: string) => string;
 declare const tbl: (
   columns: Array<[string, string, string?]>,
   rows: unknown[][],
@@ -613,4 +613,394 @@ function installAdminManagement() {
       if (value > user.bal) fail("The user's available balance is too low.");
     }
 
-    const id 
+    const id = `W-${Date.now()}`;
+    const withdrawal: AdminPayment = {
+      id,
+      uid: user.id,
+      asset,
+      net,
+      amt: amount,
+      usd: roundMoney(usdAmount),
+      status,
+      t: Date.now(),
+      note: form.note.trim(),
+      to: form.destination.trim(),
+    };
+    DB.withdrawals.unshift(withdrawal);
+    if (status === "approved") {
+      user.bal = roundMoney(user.bal - withdrawal.usd);
+      led(user, "withdrawal", -withdrawal.usd, `Admin withdrawal ${id} approved`);
+    }
+    log(
+      "Withdrawal created",
+      id,
+      `${status} · ${usd(withdrawal.usd)} · ${user.email}${withdrawal.note ? ` · ${withdrawal.note}` : ""}`,
+    );
+    save();
+    return withdrawal;
+  };
+
+  let activeSupportTab: "tickets" | "email" = "tickets";
+  const baseSupportView = V.Support;
+  if (baseSupportView) {
+    V.Support = () => {
+      const supportMarkup = baseSupportView();
+      const composerMarkup = can("support")
+        ? browserWindow.__adminEmailComposerMarkup?.() ||
+          '<div class="err" role="alert">The email composer is unavailable.</div>'
+        : "";
+      return `<div class="tabs" role="tablist" aria-label="Support sections">
+        <button type="button" class="tab${activeSupportTab === "tickets" ? " on" : ""}" role="tab" aria-selected="${activeSupportTab === "tickets"}" aria-controls="support-tickets" data-a="support-tab" data-tab="tickets">Tickets</button>
+        <button type="button" class="tab${activeSupportTab === "email" ? " on" : ""}" role="tab" aria-selected="${activeSupportTab === "email"}" aria-controls="support-email" data-a="support-tab" data-tab="email">Email</button>
+      </div>
+      <section id="support-tickets" role="tabpanel"${activeSupportTab === "tickets" ? "" : " hidden"}>${supportMarkup}</section>
+      <section id="support-email" role="tabpanel"${activeSupportTab === "email" ? "" : " hidden"}>${composerMarkup}</section>`;
+    };
+  }
+  H["support-tab"] = (button) => {
+    if (button.dataset.tab === "tickets" || button.dataset.tab === "email") {
+      activeSupportTab = button.dataset.tab;
+      render();
+    }
+  };
+
+  function withPaymentAction(
+    baseView: () => string,
+    kind: "deposit" | "withdrawal",
+  ) {
+    return () => {
+      need("money");
+      const markup = baseView();
+      const target = kind === "deposit" ? "deposits" : "withdrawals";
+      const action = kind === "deposit" ? "new-deposit" : "new-withdrawal";
+      const label = kind === "deposit" ? "Create deposit" : "Create withdrawal";
+      const exportButton = `<button class="btn alt" data-a="exp" data-t="${target}">Export CSV</button>`;
+      const createButton = `<button class="btn" data-a="${action}">${label}</button>`;
+      return markup.includes(exportButton)
+        ? markup.replace(exportButton, `${createButton}${exportButton}`)
+        : `<div class="acts" style="justify-content:flex-end">${createButton}</div>${markup}`;
+    };
+  }
+
+  if (V.Deposits) V.Deposits = withPaymentAction(V.Deposits, "deposit");
+  if (V.Withdrawals)
+    V.Withdrawals = withPaymentAction(V.Withdrawals, "withdrawal");
+
+  function accountSettingsView() {
+    const email = ME?.email || "";
+    const displayName = readDisplayName(email);
+    const role = ME?.role || "Admin";
+    return (
+      hd("Manage your admin profile", "Account settings") +
+      `<div style="max-width:720px;padding:18px;border:1px solid var(--line);border-radius:14px;background:var(--panel)">
+        <div class="two">
+          <div>
+            <label class="fl" for="account-display-name">Display name</label>
+            <input class="sel" id="account-display-name" maxlength="80" value="${esc(displayName)}" autocomplete="name">
+          </div>
+          <div>
+            <label class="fl" for="account-email">Email</label>
+            <input class="sel" id="account-email" value="${esc(email)}" readonly>
+          </div>
+        </div>
+        <p class="note">Role: ${esc(role)}. This prototype stores your display name in this browser only.</p>
+        <div class="acts">
+          <button type="button" class="btn" data-a="account-settings-save">Save changes</button>
+          <button type="button" class="btn alt" data-a="account-settings-reset">Reset display name</button>
+        </div>
+        <div id="account-settings-status" class="note" role="status" aria-live="polite"></div>
+      </div>`
+    );
+  }
+
+  function syncAccountProfile(displayName: string) {
+    const label = document.querySelector<HTMLElement>("#admin-profile-role");
+    const initial = document.querySelector<HTMLElement>(
+      "#admin-profile-initial",
+    );
+    if (label) label.textContent = displayName || ME?.role || "Admin";
+    if (initial) {
+      initial.textContent = (displayName || ME?.email || "A")
+        .trim()
+        .slice(0, 1)
+        .toUpperCase();
+    }
+  }
+
+  H["account-settings-save"] = () => {
+    const email = ME?.email || "";
+    const input = document.querySelector<HTMLInputElement>(
+      "#account-display-name",
+    );
+    const status = document.querySelector<HTMLElement>(
+      "#account-settings-status",
+    );
+    const displayName = input?.value.trim() || "";
+    if (displayName.length > 80) {
+      if (status) status.textContent = "Use 80 characters or fewer.";
+      return;
+    }
+    try {
+      if (displayName) {
+        localStorage.setItem(profileStorageKey(email), displayName);
+      } else {
+        localStorage.removeItem(profileStorageKey(email));
+      }
+      syncAccountProfile(displayName);
+      if (status) status.textContent = "Saved in this browser.";
+    } catch {
+      if (status) status.textContent = "Could not save settings in this browser.";
+    }
+  };
+
+  H["account-settings-reset"] = () => {
+    const email = ME?.email || "";
+    const input = document.querySelector<HTMLInputElement>(
+      "#account-display-name",
+    );
+    const status = document.querySelector<HTMLElement>(
+      "#account-settings-status",
+    );
+    try {
+      localStorage.removeItem(profileStorageKey(email));
+      if (input) input.value = "";
+      syncAccountProfile("");
+      if (status) status.textContent = "Display name reset.";
+    } catch {
+      if (status) status.textContent = "Could not reset settings in this browser.";
+    }
+  };
+
+  V["Account settings"] = accountSettingsView;
+
+  function depositMethodsView() {
+    need("money");
+    if (!depositMethodsLoaded && !depositMethodsLoading) {
+      void refreshDepositMethods();
+    }
+
+    const editing = sharedDepositMethods.find(
+      (method) => method.id === editingDepositMethodId,
+    );
+    const blocked = !depositMethodsLoaded || Boolean(depositMethodsError);
+    const methodRows = sharedDepositMethods.length
+      ? sharedDepositMethods
+          .map(
+            (method) => `<div class="mini">
+              <div>
+                <strong>${esc(method.asset)} · ${esc(method.network)}</strong>
+                <small style="overflow-wrap:anywhere">${esc(method.address)}</small>
+                ${method.qrDataUrl ? "<small>QR image saved</small>" : ""}
+              </div>
+              <div class="acts">
+                <button type="button" class="btn alt sm" data-a="deposit-method-edit" data-id="${esc(method.id)}">Edit</button>
+                <button type="button" class="btn alt sm bad" data-a="deposit-method-remove" data-id="${esc(method.id)}">Remove</button>
+              </div>
+            </div>`,
+          )
+          .join("")
+      : '<p class="note">No deposit methods have been added.</p>';
+
+    window.setTimeout(updateDepositQrPreview, 0);
+    return (
+      hd(
+        "Manage the deposit routes shown in this prototype",
+        "Deposit methods",
+        `<button type="button" class="btn" data-a="deposit-method-new">New method</button>`,
+      ) +
+      (depositMethodsLoading
+        ? '<p class="note" role="status">Loading saved methods…</p>'
+        : "") +
+      (depositMethodsError
+        ? `<div class="err" role="alert">${esc(depositMethodsError)}</div>`
+        : "") +
+      (depositMethodsNotice
+        ? `<p class="note" role="status">${esc(depositMethodsNotice)}</p>`
+        : "") +
+      `<div class="two" style="align-items:start">
+        <section>
+          <h3>Saved methods</h3>
+          ${methodRows}
+        </section>
+        <section style="padding:16px;border:1px solid var(--line);border-radius:14px">
+          <h3>${editing ? "Edit deposit method" : "Add deposit method"}</h3>
+          <div>
+            <label class="fl" for="deposit-method-asset">Asset</label>
+            <input class="sel" id="deposit-method-asset" maxlength="20" value="${esc(editing?.asset || "")}" placeholder="USDT">
+          </div>
+          <div>
+            <label class="fl" for="deposit-method-network">Network</label>
+            <input class="sel" id="deposit-method-network" maxlength="60" value="${esc(editing?.network || "")}" placeholder="TRON (TRC20)">
+          </div>
+          <div>
+            <label class="fl" for="deposit-method-address">Deposit address</label>
+            <textarea class="sel" id="deposit-method-address" maxlength="512" rows="3" placeholder="Enter the receiving address">${esc(editing?.address || "")}</textarea>
+          </div>
+          <div>
+            <label class="fl" for="deposit-method-qr-file">QR image</label>
+            <input class="sel" id="deposit-method-qr-file" type="file" accept="image/png,image/jpeg,image/webp">
+            <div id="deposit-method-qr-preview" class="acts" style="justify-content:flex-start;margin-top:10px"></div>
+            <div id="deposit-method-qr-status" class="note" role="status"></div>
+            <div id="deposit-method-qr-error" class="err" role="alert"></div>
+          </div>
+          <div class="acts" style="margin-top:14px">
+            <button type="button" class="btn" data-a="deposit-method-save"${blocked ? " disabled" : ""}>Save method</button>
+            <button type="button" class="btn alt" data-a="deposit-method-new">Clear</button>
+          </div>
+          <p class="note">Methods and QR previews are saved in this browser only; they are not published to customer deposit screens.</p>
+        </section>
+      </div>`
+    );
+  }
+
+  V["Deposit methods"] = depositMethodsView;
+
+  H["deposit-method-new"] = () => {
+    need("money");
+    editingDepositMethodId = "";
+    pendingDepositQrDataUrl = null;
+    depositMethodsNotice = "";
+    depositMethodsError = "";
+    render();
+  };
+
+  H["deposit-method-edit"] = (button) => {
+    need("money");
+    const method = sharedDepositMethods.find(
+      (item) => item.id === button.dataset.id,
+    );
+    if (!method) {
+      toast("That deposit method is no longer available.");
+      return;
+    }
+    editingDepositMethodId = method.id;
+    pendingDepositQrDataUrl = null;
+    depositMethodsNotice = "";
+    render();
+  };
+
+  H["deposit-method-save"] = () => {
+    need("money");
+    if (!depositMethodsLoaded || depositMethodsError) {
+      toast("Deposit methods could not be loaded. Reload before saving.");
+      return;
+    }
+    const asset =
+      document.querySelector<HTMLInputElement>("#deposit-method-asset")?.value
+        .trim() || "";
+    const network =
+      document.querySelector<HTMLInputElement>(
+        "#deposit-method-network",
+      )?.value.trim() || "";
+    const address =
+      document.querySelector<HTMLTextAreaElement>(
+        "#deposit-method-address",
+      )?.value.trim() || "";
+    const errorTarget = document.querySelector<HTMLElement>(
+      "#deposit-method-qr-error",
+    );
+    if (!asset || !network || !address) {
+      if (errorTarget) errorTarget.textContent = "Asset, network, and address are required.";
+      return;
+    }
+    const duplicate = sharedDepositMethods.some(
+      (method) =>
+        method.id !== editingDepositMethodId &&
+        method.asset.toLowerCase() === asset.toLowerCase() &&
+        method.network.toLowerCase() === network.toLowerCase(),
+    );
+    if (duplicate) {
+      if (errorTarget)
+        errorTarget.textContent = "A method for this asset and network already exists.";
+      return;
+    }
+
+    const previous = sharedDepositMethods.find(
+      (method) => method.id === editingDepositMethodId,
+    );
+    let id = previous?.id || `DM-${Date.now()}`;
+    while (
+      !previous &&
+      sharedDepositMethods.some((method) => method.id === id)
+    ) {
+      id += "1";
+    }
+    const now = new Date().toISOString();
+    const qrDataUrl =
+      pendingDepositQrDataUrl === null
+        ? previous?.qrDataUrl
+        : pendingDepositQrDataUrl || undefined;
+    const method: SharedDepositMethod = {
+      id,
+      asset,
+      network,
+      address,
+      createdAt: previous?.createdAt || now,
+      updatedAt: now,
+      ...(qrDataUrl ? { qrDataUrl } : {}),
+    };
+    const nextMethods = previous
+      ? sharedDepositMethods.map((item) => (item.id === id ? method : item))
+      : [method, ...sharedDepositMethods];
+    try {
+      localStorage.setItem(
+        depositMethodsStorageKey,
+        JSON.stringify(nextMethods),
+      );
+      sharedDepositMethods = nextMethods;
+      editingDepositMethodId = "";
+      pendingDepositQrDataUrl = null;
+      depositMethodsError = "";
+      depositMethodsNotice = "Deposit method saved in this browser.";
+      render();
+    } catch {
+      if (errorTarget)
+        errorTarget.textContent = "Could not save this method in browser storage.";
+    }
+  };
+
+  H["deposit-method-remove"] = (button) => {
+    need("money");
+    const method = sharedDepositMethods.find(
+      (item) => item.id === button.dataset.id,
+    );
+    if (!method) return;
+    if (
+      !window.confirm(
+        `Remove ${method.asset} on ${method.network} from this browser?`,
+      )
+    ) {
+      return;
+    }
+    const nextMethods = sharedDepositMethods.filter(
+      (item) => item.id !== method.id,
+    );
+    try {
+      localStorage.setItem(
+        depositMethodsStorageKey,
+        JSON.stringify(nextMethods),
+      );
+      sharedDepositMethods = nextMethods;
+      if (editingDepositMethodId === method.id) {
+        editingDepositMethodId = "";
+        pendingDepositQrDataUrl = null;
+      }
+      depositMethodsNotice = "Deposit method removed from this browser.";
+      depositMethodsError = "";
+      render();
+    } catch {
+      toast("Could not remove this method from browser storage.");
+    }
+  };
+
+  H["deposit-method-qr-remove"] = () => {
+    need("money");
+    pendingDepositQrDataUrl = "";
+    setDepositQrStatus("QR image will be removed when you save.");
+    setDepositQrStatus("", true);
+    updateDepositQrPreview();
+  };
+}
+
+export const adminManagementBehavior = `(${installAdminManagement.toString()})();`;
+
