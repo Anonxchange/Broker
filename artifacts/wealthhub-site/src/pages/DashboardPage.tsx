@@ -484,11 +484,11 @@ function buildDashboardDocument(
     }
     #title .dashboard-brand-mark {
       display: block;
-      width: 26px;
-      max-width: 26px;
-      height: 26px;
-      object-fit: cover;
-      object-position: left center;
+      width: 30px;
+      max-width: 30px;
+      height: 30px;
+      object-fit: contain;
+      object-position: center;
     }
     #title {
       display: flex;
@@ -496,6 +496,64 @@ function buildDashboardDocument(
       align-items: center;
       flex: 0 1 auto;
       margin-right: auto;
+    }
+    #tick {
+      display: block;
+      width: 100%;
+      overflow: hidden;
+      padding: 0 0 14px;
+      margin: -6px 0 24px;
+      border-bottom: 1px solid var(--line);
+      font-size: 13px;
+      white-space: nowrap;
+      scrollbar-width: none;
+    }
+    #tick::-webkit-scrollbar {
+      display: none;
+    }
+    #tick .ticker-track {
+      display: flex;
+      width: max-content;
+      will-change: transform;
+      animation: auvrenthia-price-ticker 42s linear infinite;
+    }
+    #tick .ticker-group {
+      display: flex;
+      flex: none;
+      align-items: center;
+      gap: 30px;
+      padding-right: 30px;
+    }
+    #tick .ticker-group > span {
+      display: inline-flex;
+      flex: none;
+      align-items: center;
+    }
+    #tick .ticker-group > span > b {
+      margin: 0 7px 0 6px;
+      font-weight: 700;
+    }
+    #tick:hover .ticker-track,
+    #tick:focus .ticker-track {
+      animation-play-state: paused;
+    }
+    @keyframes auvrenthia-price-ticker {
+      to {
+        transform: translate3d(-50%, 0, 0);
+      }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #tick {
+        overflow-x: auto;
+      }
+      #tick .ticker-track {
+        width: 100%;
+        animation: none;
+        transform: none;
+      }
+      #tick .ticker-group[aria-hidden="true"] {
+        display: none;
+      }
     }
     .top {
       width: 100%;
@@ -805,11 +863,12 @@ function buildDashboardDocument(
     const syncHeaderLogo=()=>{
       if(!dashboardTitle||dashboardTitle.querySelector("[data-dashboard-brand]"))return;
       const logo=document.createElement("img");
-      logo.src="/wealthhub/auvrenthia-logo.svg";
-      logo.alt="Auvrenthia";
+      logo.src="/wealthhub/auvrenthia-mark.svg";
+      logo.alt="Auvrenthia Markets";
       logo.className="dashboard-brand-mark";
       logo.setAttribute("data-dashboard-brand","");
       dashboardTitle.replaceChildren(logo);
+      dashboardTitle.setAttribute("aria-label","Auvrenthia Markets dashboard");
     };
     syncHeaderLogo();
     new MutationObserver(syncHeaderLogo).observe(dashboardTitle,{childList:true});
@@ -884,7 +943,7 @@ function buildDashboardDocument(
     )
     .replace(
       /function tickRender\(\)\{[\s\S]*?\}\nlet LIVE=/,
-      'function tickRender(){const find=(rows,symbol)=>rows.find(row=>row[0]===symbol),items=[["BTC",find(D.Crypto,"BTC"),"crypto"],["ETH",find(D.Crypto,"ETH"),"crypto"],["EUR/USD",find(D.Forex,"EUR/USD"),"forex"],["USD/NGN",find(D.Forex,"USD/NGN"),"forex"],["Gold",find(D.Commodities,"XAU"),"metal"],["Silver",find(D.Commodities,"XAG"),"metal"]];$("#tick").innerHTML=items.map(([name,asset,kind])=>{const value=asset?asset[2]:null,change=asset&&Number.isFinite(asset[3])?asset[3]:null,price=value==null?"—":kind==="forex"?value.toFixed(4):kind==="crypto"&&Math.abs(value)<.01?"$"+value.toPrecision(4):fmt(value);return `<span>${name}<b>${price}</b><span class="${change===null?"":change>=0?"up":"dn"}">${change===null?"":(change>=0?"+":"−")+Math.abs(change).toFixed(2)+"%"}</span></span>`}).join("")}\nlet LIVE=',
+      'function tickRender(){const find=(rows,symbol)=>rows.find(row=>row[0]===symbol),items=[["BTC",find(D.Crypto,"BTC"),"crypto"],["ETH",find(D.Crypto,"ETH"),"crypto"],["EUR/USD",find(D.Forex,"EUR/USD"),"forex"],["USD/NGN",find(D.Forex,"USD/NGN"),"forex"],["Gold",find(D.Commodities,"XAU"),"metal"],["Silver",find(D.Commodities,"XAG"),"metal"]];const markup=items.map(([name,asset,kind])=>{const value=asset?asset[2]:null,change=asset&&Number.isFinite(asset[3])?asset[3]:null,price=value==null?"—":kind==="forex"?value.toFixed(4):kind==="crypto"&&Math.abs(value)<.01?"$"+value.toPrecision(4):fmt(value);return `<span>${name}<b>${price}</b><span class="${change===null?"":change>=0?"up":"dn"}">${change===null?"":(change>=0?"+":"−")+Math.abs(change).toFixed(2)+"%"}</span></span>`}).join("");const ticker=$("#tick");ticker.setAttribute("role","region");ticker.setAttribute("aria-label","Live market prices");ticker.setAttribute("aria-live","off");ticker.setAttribute("tabindex","0");ticker.innerHTML=`<div class="ticker-track"><div class="ticker-group">${markup}</div><div class="ticker-group" aria-hidden="true">${markup}</div></div>`}\nlet LIVE=',
     )
     .replace(
       /function lg\(t\)\{[\s\S]*?\nfunction renderRail/,
