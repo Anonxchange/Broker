@@ -530,7 +530,27 @@ export function installMemberDashboardTools() {
           .join('')
       : '<div class="help-empty"><b>No tickets yet</b><p>Tickets you open will appear here with their current status.</p></div>';
 
-  const helpFaqs: [string, string][] = [
+  const helpFaqs: [string, string, [string, string]?][] = [
+    [
+      'Deposits',
+      'Use an active payment method and follow the on-screen receipt steps. A request remains pending until it is reviewed.',
+      ['Open deposits', 'Deposit funds'],
+    ],
+    [
+      'Account activity',
+      'See recorded transactions and export the dashboard activity you have saved.',
+      ['Open activity export', 'Statements and tax'],
+    ],
+    [
+      'Identity and security',
+      'Review the verification status shown for your account.',
+      ['Open verification', 'Security and verification'],
+    ],
+    [
+      'Market data',
+      'Quotes are fetched directly from TradingView, with headlines and calendar events from public feeds. Historical chart candles still use the Supabase market-data function.',
+      ['Open screener', 'Screener'],
+    ],
     [
       'How do I make a deposit?',
       'Open Deposit funds, choose an active payment method, send your payment, then attach a screenshot of the receipt. Always confirm the asset and network before paying, because transfers may be irreversible.',
@@ -574,21 +594,16 @@ export function installMemberDashboardTools() {
         `<option value="${escapeHtml(priority)}"${priority === 'Normal' ? ' selected' : ''}>${escapeHtml(priority)}</option>`,
     ).join('');
     const faqMarkup = helpFaqs
-      .map(
-        ([question, answer]) =>
-          `<details class="help-faq-item"><summary>${escapeHtml(question)}</summary><p>${escapeHtml(answer)}</p></details>`,
-      )
+      .map(([question, answer, action]) => {
+        const button = action
+          ? `<div class="help-faq-action"><button class="btn alt" type="button" data-tool-action="navigate" data-destination="${escapeHtml(action[1])}">${escapeHtml(action[0])}</button></div>`
+          : '';
+        return `<details class="help-faq-item"><summary>${escapeHtml(question)}</summary><p>${escapeHtml(answer)}</p>${button}</details>`;
+      })
       .join('');
 
     root.innerHTML = `<div class="head"><div><div class="lbl">Member support</div><div class="bal">Help center</div></div></div>
       <p class="note">Find quick answers below, or open a ticket and our support team will follow up by email.</p>
-
-      <div class="help-quick">
-        <div class="member-tool-card"><h3>Deposits</h3><p>Use an active payment method and follow the on-screen receipt steps. A request remains pending until it is reviewed.</p><button class="btn alt" type="button" data-tool-action="navigate" data-destination="Deposit funds">Open deposits</button></div>
-        <div class="member-tool-card"><h3>Account activity</h3><p>See recorded transactions and export the dashboard activity you have saved.</p><button class="btn alt" type="button" data-tool-action="navigate" data-destination="Statements and tax">Open activity export</button></div>
-        <div class="member-tool-card"><h3>Identity and security</h3><p>Review the verification status shown for your account.</p><button class="btn alt" type="button" data-tool-action="navigate" data-destination="Security and verification">Open verification</button></div>
-        <div class="member-tool-card"><h3>Market data</h3><p>Quotes are fetched directly from TradingView, with headlines and calendar events from public feeds. Historical chart candles still use the Supabase market-data function.</p><button class="btn alt" type="button" data-tool-action="navigate" data-destination="Screener">Open screener</button></div>
-      </div>
 
       <h2 class="sec">Contact support</h2>
       <div class="mp help-ticket" id="help-ticket-card">
@@ -798,9 +813,6 @@ export function installMemberDashboardTools() {
     .member-tool-calendar-facts b{font-variant-numeric:tabular-nums}
     .member-tool-calendar-source{margin:8px 0 0!important}
     .member-tool-alert-form{grid-template-columns:1.4fr 1fr 1fr auto;align-items:end}
-    .help-quick{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-    .help-quick .member-tool-card{margin:0;display:flex;flex-direction:column;align-items:flex-start}
-    .help-quick .member-tool-card p{flex:1}
     .help-ticket{max-width:900px}
     .help-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:16px}
     .help-input{width:100%;min-width:0;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font:inherit}
@@ -825,8 +837,10 @@ export function installMemberDashboardTools() {
     .help-faq-item[open] summary::after{content:"−"}
     .help-faq-item summary:hover{background:color-mix(in srgb,var(--ink) 4%,transparent)}
     .help-faq-item summary:focus-visible{outline:2px solid var(--brand);outline-offset:-2px}
-    .help-faq-item p{margin:0;padding:0 18px 18px;color:var(--mute);line-height:1.6;max-width:70ch}
-    @media(max-width:760px){.help-quick,.help-grid{grid-template-columns:1fr}}
+    .help-faq-item p{margin:0;padding:0 18px 14px;color:var(--mute);line-height:1.6;max-width:70ch}
+    .help-faq-item p:last-child{padding-bottom:18px}
+    .help-faq-action{padding:0 18px 18px}
+    @media(max-width:760px){.help-grid{grid-template-columns:1fr}}
     @media(max-width:760px){.member-tool-filters,.member-tool-alert-form{grid-template-columns:1fr}.member-tool-row{grid-template-columns:minmax(0,1fr) auto;gap:8px}.member-tool-heading{display:none}.member-tool-number{text-align:left}.member-tool-action{grid-column:1/-1;justify-self:start}.member-tool-calendar-facts{grid-template-columns:repeat(3,minmax(0,1fr))}}
   `;
   document.head.appendChild(style);
