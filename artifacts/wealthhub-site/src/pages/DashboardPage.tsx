@@ -788,7 +788,7 @@ function buildDashboardDocument(
         const requestId=typeof crypto!=="undefined"&&typeof crypto.randomUUID==="function"?crypto.randomUUID():String(Date.now())+"-"+String(Math.random()).slice(2);
         const finish=(handler,value)=>{window.clearTimeout(timeout);window.removeEventListener("message",onMessage);handler(value)};
         const onMessage=event=>{
-          if(event.source!==window.parent||event.origin!==window.location.origin)return;
+          if(event.source!==window.parent)return;
           const response=event.data;
           if(response?.type!=="auvrenthia-market-response"||response.requestId!==requestId)return;
           if(response.ok)finish(resolve,response.data);
@@ -796,7 +796,7 @@ function buildDashboardDocument(
         };
         const timeout=window.setTimeout(()=>finish(reject,new Error("Market data request timed out.")),20000);
         window.addEventListener("message",onMessage);
-        window.parent.postMessage({type:"auvrenthia-market-request",requestId,payload},window.location.origin);
+        window.parent.postMessage({type:"auvrenthia-market-request",requestId,payload},"*");
       });
     };
   `;
@@ -896,7 +896,116 @@ function buildDashboardDocument(
     )
     .replace(
       /async function loadPublic\(\)\{[\s\S]*?\}\ntickRender\(\);/,
-      'async function loadPublic(category){const key={"Stocks":"stocks","ETFs":"etfs","Crypto":"crypto","Forex":"forex","Commodities":"commodities"}[category];if(!key)return;MARKET_STATUS[category]="Loading live market data…";try{const feed=await window.__AUVRENTHIA_MARKET_REQUEST__({action:"feed",category:key});if(!feed||!Array.isArray(feed.assets))throw new Error(feed&&feed.error||"Market feed unavailable");const clean=value=>String(value??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll(String.fromCharCode(34),"&quot;");D[category]=feed.assets.map(asset=>{if(asset.icon)MARKET_ICONS[asset.symbol]=asset.icon;return[clean(asset.symbol),clean(asset.name),asset.price,asset.change24h,asset.sparkline||[],asset.id||null]});MARKET_META[category]={source:feed.source,asOf:feed.asOf,stale:feed.stale};MARKET_STATUS[category]=feed.source+" · updated "+(feed.asOf?new Date(feed.asOf).toLocaleString():"just now")+(feed.stale?" · showing cached data":"");if(category==="Crypto")LIVE={ok:true,msg:MARKET_STATUS[category]}}catch(error){D[category]=[];MARKET_META[category]=null;MARKET_STATUS[category]="Live market data is temporarily unavailable.";if(category==="Crypto")LIVE={ok:false,msg:MARKET_STATUS[category]}}tickRender();renderRail();renderList();if(page===category)renderMkt(category)}\ntickRender();',
+      `const MARKET_INSTRUMENTS={
+        Stocks:[
+          {symbol:"AAPL",ticker:"NASDAQ:AAPL",name:"Apple Inc."},
+          {symbol:"MSFT",ticker:"NASDAQ:MSFT",name:"Microsoft"},
+          {symbol:"NVDA",ticker:"NASDAQ:NVDA",name:"NVIDIA"},
+          {symbol:"AMZN",ticker:"NASDAQ:AMZN",name:"Amazon"},
+          {symbol:"TSLA",ticker:"NASDAQ:TSLA",name:"Tesla"}
+        ],
+        ETFs:[
+          {symbol:"VOO",ticker:"AMEX:VOO",name:"Vanguard S&P 500 ETF"},
+          {symbol:"QQQ",ticker:"NASDAQ:QQQ",name:"Invesco QQQ Trust"},
+          {symbol:"VTI",ticker:"AMEX:VTI",name:"Vanguard Total Stock Market ETF"},
+          {symbol:"SPY",ticker:"AMEX:SPY",name:"SPDR S&P 500 ETF"},
+          {symbol:"IVV",ticker:"AMEX:IVV",name:"iShares Core S&P 500 ETF"}
+        ],
+        Crypto:[
+          {symbol:"BTC",ticker:"BINANCE:BTCUSDT",name:"Bitcoin",id:"bitcoin"},
+          {symbol:"ETH",ticker:"BINANCE:ETHUSDT",name:"Ethereum",id:"ethereum"},
+          {symbol:"SOL",ticker:"BINANCE:SOLUSDT",name:"Solana",id:"solana"},
+          {symbol:"BNB",ticker:"BINANCE:BNBUSDT",name:"BNB",id:"binancecoin"},
+          {symbol:"XRP",ticker:"BINANCE:XRPUSDT",name:"XRP",id:"ripple"},
+          {symbol:"DOGE",ticker:"BINANCE:DOGEUSDT",name:"Dogecoin",id:"dogecoin"},
+          {symbol:"ADA",ticker:"BINANCE:ADAUSDT",name:"Cardano",id:"cardano"},
+          {symbol:"TRX",ticker:"BINANCE:TRXUSDT",name:"TRON",id:"tron"},
+          {symbol:"AVAX",ticker:"BINANCE:AVAXUSDT",name:"Avalanche",id:"avalanche-2"},
+          {symbol:"LINK",ticker:"BINANCE:LINKUSDT",name:"Chainlink",id:"chainlink"}
+        ],
+        Forex:[
+          {symbol:"EUR/USD",ticker:"FX_IDC:EURUSD",name:"Euro / US dollar"},
+          {symbol:"GBP/USD",ticker:"FX_IDC:GBPUSD",name:"British pound / US dollar"},
+          {symbol:"USD/JPY",ticker:"FX_IDC:USDJPY",name:"US dollar / Japanese yen"},
+          {symbol:"AUD/USD",ticker:"FX_IDC:AUDUSD",name:"Australian dollar / US dollar"},
+          {symbol:"USD/CAD",ticker:"FX_IDC:USDCAD",name:"US dollar / Canadian dollar"},
+          {symbol:"USD/CHF",ticker:"FX_IDC:USDCHF",name:"US dollar / Swiss franc"},
+          {symbol:"USD/CNY",ticker:"FX_IDC:USDCNY",name:"US dollar / Chinese yuan"},
+          {symbol:"USD/NGN",ticker:"FX_IDC:USDNGN",name:"US dollar / Nigerian naira"}
+        ],
+        Commodities:[
+          {symbol:"XAU",ticker:"COMEX:GC1!",name:"Gold futures"},
+          {symbol:"XAG",ticker:"COMEX:SI1!",name:"Silver futures"},
+          {symbol:"XPT",ticker:"NYMEX:PL1!",name:"Platinum futures"},
+          {symbol:"XPD",ticker:"NYMEX:PA1!",name:"Palladium futures"}
+        ]
+      };
+      const MARKET_SCANNERS={Stocks:"america",ETFs:"america",Crypto:"crypto",Forex:"forex",Commodities:"futures"};
+      const MARKET_CACHE=Object.create(null);
+      async function loadPublic(category){
+        const instruments=MARKET_INSTRUMENTS[category];
+        if(!instruments)return;
+        const cached=MARKET_CACHE[category];
+        if(cached&&Date.now()-cached.updatedAt<30000){
+          D[category]=cached.rows;
+          MARKET_META[category]=cached.meta;
+          MARKET_STATUS[category]=cached.status;
+          if(category==="Crypto")LIVE={ok:true,msg:cached.status};
+          tickRender();renderRail();renderList();if(page===category)renderMkt(category);
+          return;
+        }
+        MARKET_STATUS[category]="Loading live TradingView quotes…";
+        try{
+          const response=await fetch("https://scanner.tradingview.com/"+MARKET_SCANNERS[category]+"/scan",{
+            method:"POST",
+            headers:{"Content-Type":"text/plain;charset=UTF-8","Accept":"application/json"},
+            body:JSON.stringify({
+              symbols:{tickers:instruments.map(item=>item.ticker),query:{types:[]}},
+              columns:["name","close","change","change_abs","volume","open","high","low","currency","description"]
+            })
+          });
+          if(!response.ok)throw new Error("TradingView returned HTTP "+response.status);
+          const payload=await response.json();
+          const quotes=Array.isArray(payload.data)?payload.data:[];
+          const bySymbol=new Map(quotes.filter(row=>row&&typeof row.s==="string").map(row=>[row.s,row.d]));
+          const numberOrNull=value=>typeof value==="number"&&Number.isFinite(value)?value:null;
+          const clean=value=>String(value??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll(String.fromCharCode(34),"&quot;");
+          const rows=instruments.flatMap(instrument=>{
+            const quote=bySymbol.get(instrument.ticker);
+            if(!Array.isArray(quote)||typeof quote[1]!=="number"||!Number.isFinite(quote[1]))return [];
+            return [[
+              clean(instrument.symbol),
+              clean(instrument.name),
+              quote[1],
+              numberOrNull(quote[2]),
+              [],
+              instrument.id||null,
+              numberOrNull(quote[5]),
+              numberOrNull(quote[6]),
+              numberOrNull(quote[7]),
+              numberOrNull(quote[3]),
+              numberOrNull(quote[4]),
+              typeof quote[8]==="string"?clean(quote[8]):null
+            ]];
+          });
+          if(!rows.length)throw new Error("TradingView returned no quotes for "+category);
+          const fetchedAt=new Date().toISOString();
+          const meta={source:"TradingView",asOf:fetchedAt,stale:false};
+          const status="TradingView · updated "+new Date(fetchedAt).toLocaleString();
+          D[category]=rows;
+          MARKET_META[category]=meta;
+          MARKET_STATUS[category]=status;
+          MARKET_CACHE[category]={rows,meta,status,updatedAt:Date.now()};
+          if(category==="Crypto")LIVE={ok:true,msg:status};
+        }catch(error){
+          D[category]=[];
+          MARKET_META[category]=null;
+          MARKET_STATUS[category]="TradingView quotes are temporarily unavailable.";
+          if(category==="Crypto")LIVE={ok:false,msg:MARKET_STATUS[category]};
+        }
+        tickRender();renderRail();renderList();if(page===category)renderMkt(category);
+      }
+      tickRender();`,
     )
     .replace(
       'if(ism)renderMkt(page);if(ms)',
@@ -940,7 +1049,7 @@ function buildDashboardDocument(
     )
     .replace(
       '${INFO[k][1]}${k==="Crypto"?" "+(LIVE.ok?"Prices are live from CoinGecko.":LIVE.msg):""}',
-      '${INFO[k][1]}${["Crypto","Forex","Commodities"].includes(k)?" "+(MARKET_STATUS[k]||"Loading live market data…"):""}',
+      '${INFO[k][1]}${["Stocks","ETFs","Crypto","Forex","Commodities"].includes(k)?" "+(MARKET_STATUS[k]||"Loading live market data…"):""}',
     )
     .replace(
       'const k=c>=0?"up":"dn",col=c>=0?"var(--up)":"var(--dn)";',
@@ -1133,8 +1242,7 @@ export default function DashboardPage({
   useLayoutEffect(() => {
     function handleMessage(event: MessageEvent) {
       if (
-        event.source !== frameRef.current?.contentWindow ||
-        event.origin !== window.location.origin
+        event.source !== frameRef.current?.contentWindow
       ) {
         return;
       }
@@ -1155,7 +1263,7 @@ export default function DashboardPage({
               data,
               error,
             },
-            window.location.origin,
+            '*',
           );
         };
 
