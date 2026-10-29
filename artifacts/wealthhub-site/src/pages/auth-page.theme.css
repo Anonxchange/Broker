@@ -213,14 +213,15 @@
   font-weight: 600;
 }
 
-.auth-field input {
+.auth-field input,
+.auth-field select {
   width: 100%;
   min-height: 3rem;
   border: 1px solid hsl(var(--border));
   border-radius: 0.65rem;
   outline: none;
   padding: 0.75rem 0.85rem;
-  background: hsl(var(--card));
+  background-color: hsl(var(--card));
   color: hsl(var(--foreground));
   font: inherit;
   font-size: 0.85rem;
@@ -232,13 +233,41 @@
   color: hsl(var(--muted-foreground) / 0.72);
 }
 
-.auth-field input:hover {
+.auth-field input:hover,
+.auth-field select:hover {
   border-color: hsl(var(--brand-primary) / 0.38);
 }
 
-.auth-field input:focus-visible {
+.auth-field input:focus-visible,
+.auth-field select:focus-visible {
   border-color: hsl(var(--brand-primary));
   box-shadow: 0 0 0 3px hsl(var(--brand-primary) / 0.13);
+}
+
+/* Country select: custom arrow, placeholder tone, option colors */
+.auth-field select {
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 2.4rem;
+  text-overflow: ellipsis;
+  background-image:
+    linear-gradient(45deg, transparent 50%, hsl(var(--muted-foreground)) 50%),
+    linear-gradient(135deg, hsl(var(--muted-foreground)) 50%, transparent 50%);
+  background-position:
+    calc(100% - 1.2rem) 50%,
+    calc(100% - 0.9rem) 50%;
+  background-size: 0.3rem 0.3rem, 0.3rem 0.3rem;
+  background-repeat: no-repeat;
+}
+
+.auth-field select:invalid {
+  color: hsl(var(--muted-foreground) / 0.72);
+}
+
+.auth-field select option {
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
 }
 
 .auth-privacy-note {
@@ -325,6 +354,7 @@
 @media (prefers-reduced-motion: reduce) {
   .auth-google,
   .auth-field input,
+  .auth-field select,
   .auth-submit {
     transition: none;
   }
