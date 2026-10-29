@@ -3,6 +3,7 @@ import { Router as WouterRouter, useLocation } from 'wouter';
 import AuthPage, { type AuthFormValues } from './pages/AuthPage';
 import AdminPage from './pages/AdminPage';
 import DashboardPage from './pages/DashboardPage';
+import { SessionLoading } from './components/session-loading';
 import { AuthProvider, useAuth } from './lib/auth-context';
 import { isStaffRole } from './lib/supabase';
 
@@ -1688,7 +1689,7 @@ function AppContent() {
     location === '/admin/account-settings'
   ) {
     if (authLoading) {
-      return <main className="auth-shell"><p role="status">Checking your session…</p></main>;
+      return <SessionLoading />;
     }
     if (!session) {
       return (
@@ -1738,7 +1739,7 @@ function AppContent() {
   }
   if (location === '/dashboard' || location === '/dashboard/profile') {
     if (authLoading) {
-      return <main className="auth-shell"><p role="status">Checking your session…</p></main>;
+      return <SessionLoading />;
     }
     if (!session) {
       return (
