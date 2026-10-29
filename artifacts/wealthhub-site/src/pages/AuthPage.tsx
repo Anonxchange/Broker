@@ -64,6 +64,58 @@ function FormField({
   );
 }
 
+const COUNTRIES = [
+  'Afghanistan', 'Albania', 'Algeria', 'Andorra', 'Angola', 'Antigua and Barbuda', 'Argentina', 'Armenia',
+  'Australia', 'Austria', 'Azerbaijan', 'Bahamas', 'Bahrain', 'Bangladesh', 'Barbados', 'Belarus', 'Belgium',
+  'Belize', 'Benin', 'Bhutan', 'Bolivia', 'Bosnia and Herzegovina', 'Botswana', 'Brazil', 'Brunei', 'Bulgaria',
+  'Burkina Faso', 'Burundi', 'Cabo Verde', 'Cambodia', 'Cameroon', 'Canada', 'Central African Republic', 'Chad',
+  'Chile', 'China', 'Colombia', 'Comoros', 'Congo (Brazzaville)', 'Congo (Kinshasa)', 'Costa Rica',
+  "Côte d'Ivoire", 'Croatia', 'Cuba', 'Cyprus', 'Czechia', 'Denmark', 'Djibouti', 'Dominica',
+  'Dominican Republic', 'Ecuador', 'Egypt', 'El Salvador', 'Equatorial Guinea', 'Eritrea', 'Estonia',
+  'Eswatini', 'Ethiopia', 'Fiji', 'Finland', 'France', 'Gabon', 'Gambia', 'Georgia', 'Germany', 'Ghana',
+  'Greece', 'Grenada', 'Guatemala', 'Guinea', 'Guinea-Bissau', 'Guyana', 'Haiti', 'Honduras', 'Hong Kong',
+  'Hungary', 'Iceland', 'India', 'Indonesia', 'Iran', 'Iraq', 'Ireland', 'Israel', 'Italy', 'Jamaica', 'Japan',
+  'Jordan', 'Kazakhstan', 'Kenya', 'Kiribati', 'Kosovo', 'Kuwait', 'Kyrgyzstan', 'Laos', 'Latvia', 'Lebanon',
+  'Lesotho', 'Liberia', 'Libya', 'Liechtenstein', 'Lithuania', 'Luxembourg', 'Macao', 'Madagascar', 'Malawi',
+  'Malaysia', 'Maldives', 'Mali', 'Malta', 'Marshall Islands', 'Mauritania', 'Mauritius', 'Mexico',
+  'Micronesia', 'Moldova', 'Monaco', 'Mongolia', 'Montenegro', 'Morocco', 'Mozambique', 'Myanmar', 'Namibia',
+  'Nauru', 'Nepal', 'Netherlands', 'New Zealand', 'Nicaragua', 'Niger', 'Nigeria', 'North Korea',
+  'North Macedonia', 'Norway', 'Oman', 'Pakistan', 'Palau', 'Palestine', 'Panama', 'Papua New Guinea',
+  'Paraguay', 'Peru', 'Philippines', 'Poland', 'Portugal', 'Puerto Rico', 'Qatar', 'Romania', 'Russia',
+  'Rwanda', 'Saint Kitts and Nevis', 'Saint Lucia', 'Saint Vincent and the Grenadines', 'Samoa', 'San Marino',
+  'São Tomé and Príncipe', 'Saudi Arabia', 'Senegal', 'Serbia', 'Seychelles', 'Sierra Leone', 'Singapore',
+  'Slovakia', 'Slovenia', 'Solomon Islands', 'Somalia', 'South Africa', 'South Korea', 'South Sudan', 'Spain',
+  'Sri Lanka', 'Sudan', 'Suriname', 'Sweden', 'Switzerland', 'Syria', 'Taiwan', 'Tajikistan', 'Tanzania',
+  'Thailand', 'Timor-Leste', 'Togo', 'Tonga', 'Trinidad and Tobago', 'Tunisia', 'Türkiye', 'Turkmenistan',
+  'Tuvalu', 'Uganda', 'Ukraine', 'United Arab Emirates', 'United Kingdom', 'United States', 'Uruguay',
+  'Uzbekistan', 'Vanuatu', 'Vatican City', 'Venezuela', 'Vietnam', 'Yemen', 'Zambia', 'Zimbabwe',
+];
+
+function CountryField() {
+  return (
+    <label className="auth-field">
+      <span>Country</span>
+      <select
+        name="country"
+        autoComplete="country-name"
+        defaultValue=""
+        required
+        className="auth-select"
+        data-testid="input-country"
+      >
+        <option value="" disabled>
+          Select your country
+        </option>
+        {COUNTRIES.map((country) => (
+          <option key={country} value={country}>
+            {country}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function GoogleMark() {
   return (
     <svg className="auth-google-icon" viewBox="0 0 48 48" aria-hidden="true" focusable="false">
@@ -89,11 +141,11 @@ export default function AuthPage({
   useEffect(() => {
     if (!configured) {
       toast.error(
-        'Supabase is not configured. Add the project URL and publishable key to enable sign-in.',
-        { id: 'auth-supabase-config', duration: Infinity },
+        'Sign-in is temporarily unavailable. Please try again later.',
+        { id: 'auth-unavailable', duration: Infinity },
       );
     } else {
-      toast.dismiss('auth-supabase-config');
+      toast.dismiss('auth-unavailable');
     }
   }, [configured]);
 
@@ -103,7 +155,9 @@ export default function AuthPage({
     try {
       await onGoogleSignIn();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Google sign-in failed.');
+      toast.error(
+        error instanceof Error ? error.message : 'Google sign-in failed. Please try again.',
+      );
     } finally {
       setPending(false);
     }
@@ -116,6 +170,12 @@ export default function AuthPage({
     if (!configured) return;
 
     const values = Object.fromEntries(new FormData(form).entries());
+
+    if (isSignup && String(values.password || '') !== String(values.confirmPassword || '')) {
+      toast.error('Passwords do not match. Please re-enter them.');
+      return;
+    }
+
     setPending(true);
     try {
       const response = await onSubmit({
@@ -130,13 +190,15 @@ export default function AuthPage({
       if (response) {
         toast.success(response);
       } else if (isSignup) {
-        toast.success(
-          'Account created. Check your email if confirmation is required.',
-        );
+        toast.success('Account created. Check your email for a verification link if prompted.');
       }
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : 'Authentication failed.',
+        error instanceof Error
+          ? error.message
+          : isSignup
+            ? 'We could not create your account. Please try again.'
+            : 'We could not sign you in. Please try again.',
       );
     } finally {
       setPending(false);
@@ -160,14 +222,14 @@ export default function AuthPage({
             <h1 id="auth-heading">
               {isSignup
                 ? 'Create your account'
-                : audience === 'admin'
+                : isAdminLogin
                   ? 'Admin sign in'
                   : 'Sign in'}
             </h1>
             <p>
               {isSignup
-                ? 'Set up your Auvrenthia Markets access.'
-                : audience === 'admin'
+                ? 'Join Auvrenthia Markets in a few steps.'
+                : isAdminLogin
                   ? 'Sign in to manage Auvrenthia Markets.'
                   : 'Sign in to continue to Auvrenthia Markets.'}
             </p>
@@ -194,39 +256,56 @@ export default function AuthPage({
 
           <form className="auth-form" onSubmit={handleSubmit} noValidate aria-busy={pending}>
             {isSignup && (
-              <>
-                <div className="auth-field-grid">
-                  <FormField label="First name" name="firstName" autoComplete="given-name" placeholder="First name" minLength={2} />
-                  <FormField label="Last name" name="lastName" autoComplete="family-name" placeholder="Last name" minLength={2} />
-                </div>
-                <FormField label="Address" name="address" autoComplete="street-address" placeholder="Street address" />
-                <div className="auth-field-grid">
-                  <FormField label="Country" name="country" autoComplete="country-name" placeholder="Country" />
-                  <FormField label="Phone number" name="phone" type="tel" autoComplete="tel" placeholder="Phone number" />
-                </div>
-              </>
+              <div className="auth-field-grid">
+                <FormField label="First name" name="firstName" autoComplete="given-name" placeholder="First name" minLength={2} />
+                <FormField label="Last name" name="lastName" autoComplete="family-name" placeholder="Last name" minLength={2} />
+              </div>
             )}
+
             <FormField
               label={isAdminLogin ? 'Admin email address' : 'Email address'}
               name="email"
               type="email"
               autoComplete="email"
-              placeholder={isAdminLogin ? 'admin@example.com' : 'name@example.com'}
+              placeholder={isAdminLogin ? 'Enter your admin email' : 'name@example.com'}
             />
+
+            {isSignup && (
+              <>
+                <FormField label="Address" name="address" autoComplete="street-address" placeholder="Street address" />
+                <div className="auth-field-grid">
+                  <CountryField />
+                  <FormField label="Phone number" name="phone" type="tel" autoComplete="tel" placeholder="Phone number" />
+                </div>
+              </>
+            )}
+
             <FormField
               label="Password"
               name="password"
               type="password"
               autoComplete={isSignup ? 'new-password' : 'current-password'}
-              placeholder="Enter your password"
+              placeholder={isSignup ? 'Create a password' : 'Enter your password'}
               minLength={8}
             />
+
+            {isSignup && (
+              <FormField
+                label="Confirm password"
+                name="confirmPassword"
+                type="password"
+                autoComplete="new-password"
+                placeholder="Re-enter your password"
+                minLength={8}
+              />
+            )}
+
             <p className="auth-privacy-note">
               {isSignup
-                ? 'Your account is created with Supabase. Financial actions in this preview do not move real funds.'
+                ? 'Use at least 8 characters for your password.'
                 : isAdminLogin
                   ? 'Only approved admin and staff accounts can access this console.'
-                  : 'Sign in securely with your Supabase account. Financial actions in this preview do not move real funds.'}
+                  : 'Never share your password with anyone.'}
             </p>
             <button
               className="auth-submit"
