@@ -41,6 +41,66 @@ export function installMemberDashboardTools() {
       return escaped[character] || character;
     });
 
+  const publicResponseCache = new Map<
+    string,
+    { expiresAt: number; value: unknown }
+  >();
+  const publicResponseInFlight = new Map<string, Promise<unknown>>();
+  let publicContentRequest = 0;
+
+  const requestPublicJson = async (
+    key: string,
+    url: string,
+    ttlMs = 120_000,
+  ): Promise<unknown> => {
+    const cached = publicResponseCache.get(key);
+    if (cached && cached.expiresAt > Date.now()) return cached.value;
+
+    let pending = publicResponseInFlight.get(key);
+    if (!pending) {
+      pending = (async () => {
+        const response = await fetch(url, {
+          headers: { Accept: 'application/json' },
+          cache: 'no-store',
+        });
+        if (!response.ok) {
+          throw new Error(`Public market provider returned HTTP ${response.status}.`);
+        }
+        const value: unknown = await response.json();
+        publicResponseCache.set(key, {
+          expiresAt: Date.now() + ttlMs,
+          value,
+        });
+        return value;
+      })();
+      publicResponseInFlight.set(key, pending);
+    }
+
+    try {
+      return await pending;
+    } finally {
+      if (publicResponseInFlight.get(key) === pending) {
+        publicResponseInFlight.delete(key);
+      }
+    }
+  };
+
+  const safeExternalUrl = (value: unknown) => {
+    if (typeof value !== 'string') return null;
+    try {
+      const url = new URL(value);
+      return url.protocol === 'https:' ? url.toString() : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const formatPublicDate = (value: unknown) => {
+    if (typeof value !== 'string' || !value) return '';
+    const date = new Date(value);
+    return Number.isFinite(date.getTime()) ? date.toLocaleString() : '';
+  };
+
   const liveRows = () =>
     categories.flatMap((category) => {
       const values = Array.isArray(D[category]) ? D[category] : [];
@@ -57,6 +117,22 @@ export function installMemberDashboardTools() {
             change:
               typeof raw[3] === 'number' && Number.isFinite(raw[3])
                 ? raw[3]
+                : null,
+            open:
+              typeof raw[6] === 'number' && Number.isFinite(raw[6])
+                ? raw[6]
+                : null,
+            high:
+              typeof raw[7] === 'number' && Number.isFinite(raw[7])
+                ? raw[7]
+                : null,
+            low:
+              typeof raw[8] === 'number' && Number.isFinite(raw[8])
+                ? raw[8]
+                : null,
+            volume:
+              typeof raw[10] === 'number' && Number.isFinite(raw[10])
+                ? raw[10]
                 : null,
           },
         ];
@@ -151,8 +227,21 @@ export function installMemberDashboardTools() {
         ? '—'
         : `${row.change >= 0 ? '+' : '−'}${Math.abs(row.change).toFixed(2)}%`;
     const watched = isWatched(row.category, row.symbol);
+    const quoteDetails = [
+      row.open === null ? '' : `Open ${priceText(row.category, row.open)}`,
+      row.high === null ? '' : `High ${priceText(row.category, row.high)}`,
+      row.low === null ? '' : `Low ${priceText(row.category, row.low)}`,
+      row.volume === null || row.volume <= 0
+        ? ''
+        : `Vol ${new Intl.NumberFormat(undefined, {
+            notation: 'compact',
+            maximumFractionDigits: 1,
+          }).format(row.volume)}`,
+    ]
+      .filter(Boolean)
+      .join(' · ');
     return `<div class="member-tool-row">
-      <div class="member-tool-symbol"><b>${escapeHtml(row.symbol)}</b><small>${escapeHtml(row.name)} · ${escapeHtml(row.category)}</small></div>
+      <div class="member-tool-symbol"><b>${escapeHtml(row.symbol)}</b><small>${escapeHtml(row.name)} · ${escapeHtml(row.category)}</small>${quoteDetails ? `<small class="member-tool-quote-details">${escapeHtml(quoteDetails)}</small>` : ''}</div>
       <div class="member-tool-number">${escapeHtml(priceText(row.category, row.price))}</div>
       <div class="member-tool-number ${changeClass}">${changeText}</div>
       ${
@@ -164,7 +253,7 @@ export function installMemberDashboardTools() {
   };
 
   const noMarketData = () =>
-    '<p class="note">Live market data is not available right now. Check the Supabase market-data function connection and try again.</p>';
+    '<p class="note">Live TradingView quotes are not available right now. Check the public market-data connection and try again.</p>';
 
   const drawScreenerRows = () => {
     const results = root.querySelector<HTMLElement>('[data-tool-results]');
@@ -205,7 +294,7 @@ export function installMemberDashboardTools() {
 
   const renderScreener = () => {
     root.innerHTML = `<div class="head"><div><div class="lbl">Live market data</div><div class="bal">Screener</div></div></div>
-      <p class="note">Search and sort the assets currently returned by the market-data function. Prices are informational and are not trade instructions.</p>
+      <p class="note">Search and sort current TradingView quotes. Prices are informational and are not trade instructions.</p>
       <div class="member-tool-filters">
         <label>Search<input id="member-screener-search" type="search" placeholder="Search symbol or name"></label>
         <label>Category<select id="member-screener-category"><option>All</option>${categories
@@ -233,7 +322,7 @@ export function installMemberDashboardTools() {
       return row ? [row] : [];
     });
     root.innerHTML = `<div class="head"><div><div class="lbl">Saved across sessions</div><div class="bal">Watchlist</div></div><button class="btn alt" type="button" data-tool-action="navigate" data-destination="Screener">Find assets</button></div>
-      <p class="note">Your watchlist is saved with your member dashboard. Prices refresh when the connected market feed is available.</p>
+      <p class="note">Your watchlist is saved with your member dashboard. Prices refresh from TradingView when quotes are available.</p>
       <div class="member-tool-list">${rows.length ? rows.map((row) => rowMarkup(row)).join('') : selected.length ? '<p class="note">Your saved assets are not in the latest market feed. They remain saved and can be removed below.</p>' + selected.map((entry) => `<div class="member-tool-row"><div class="member-tool-symbol"><b>${escapeHtml(entry.symbol)}</b><small>${escapeHtml(entry.category)} · no current quote</small></div><span></span><span></span><button class="btn alt member-tool-action" type="button" data-tool-action="toggle-watch" data-category="${escapeHtml(entry.category)}" data-symbol="${escapeHtml(entry.symbol)}">Remove</button></div>`).join('') : '<p class="note">No saved assets yet. Open Screener and choose “Add to watchlist.”</p>'}</div>`;
     if (!available.length) {
       void loadCrypto().then(() => {
@@ -380,22 +469,102 @@ export function installMemberDashboardTools() {
       <div class="member-tool-card"><h3>Deposits</h3><p>Use an active payment method and follow the on-screen receipt steps. A request remains pending until it is reviewed.</p><button class="btn alt" type="button" data-tool-action="navigate" data-destination="Deposit funds">Open deposits</button></div>
       <div class="member-tool-card"><h3>Account activity</h3><p>See recorded transactions and export the dashboard activity you have saved.</p><button class="btn alt" type="button" data-tool-action="navigate" data-destination="Statements and tax">Open activity export</button></div>
       <div class="member-tool-card"><h3>Identity and security</h3><p>Review the verification status shown for your account.</p><button class="btn alt" type="button" data-tool-action="navigate" data-destination="Security and verification">Open verification</button></div>
-      <div class="member-tool-card"><h3>Market data</h3><p>Market tools use the Supabase market-data function. If prices do not load, ask your administrator to check the function deployment and the Vercel Supabase environment settings.</p><button class="btn alt" type="button" data-tool-action="navigate" data-destination="Screener">Open screener</button></div>`;
+      <div class="member-tool-card"><h3>Market data</h3><p>Quotes are fetched directly from TradingView, with headlines and calendar events from public feeds. Historical chart candles still use the Supabase market-data function.</p><button class="btn alt" type="button" data-tool-action="navigate" data-destination="Screener">Open screener</button></div>`;
   };
 
   const renderNews = () => {
-    root.innerHTML = `<div class="head"><div><div class="lbl">External market coverage</div><div class="bal">News</div></div></div>
-      <p class="note">Open a public source for current market reporting. These links leave the dashboard; headlines are not supplied or endorsed by this app.</p>
-      <div class="member-tool-card"><h3>Reuters Markets</h3><p>Business, equities, currencies and commodity coverage.</p><a class="btn alt" href="https://www.reuters.com/markets/" target="_blank" rel="noopener noreferrer">Open Reuters Markets</a></div>
-      <div class="member-tool-card"><h3>Yahoo Finance News</h3><p>Market headlines and company coverage.</p><a class="btn alt" href="https://finance.yahoo.com/news/" target="_blank" rel="noopener noreferrer">Open Yahoo Finance</a></div>
-      <div class="member-tool-card"><h3>CoinDesk Markets</h3><p>Digital-asset market reporting.</p><a class="btn alt" href="https://www.coindesk.com/markets/" target="_blank" rel="noopener noreferrer">Open CoinDesk</a></div>`;
+    const requestId = ++publicContentRequest;
+    const header = `<div class="head"><div><div class="lbl">Live market coverage</div><div class="bal">News</div></div></div>`;
+    root.innerHTML = `${header}<p class="note">Loading current market headlines…</p>`;
+    void (async () => {
+      try {
+        const payload = await requestPublicJson(
+          'market-news',
+          'https://biquote.io/api/News/market?maxResults=20&language=en&country=US',
+        );
+        if (!Array.isArray(payload)) {
+          throw new Error('The public news provider returned an unexpected response.');
+        }
+        if (requestId !== publicContentRequest || page !== 'News') return;
+
+        const cards = payload.flatMap((value) => {
+          if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+          const article = value as Record<string, unknown>;
+          const title = String(article.title ?? '').trim();
+          const url = safeExternalUrl(article.url);
+          if (!title || !url) return [];
+          const publisher = String(article.publisher ?? 'Market news');
+          const publishedAt = formatPublicDate(
+            article.publishedDate ?? article.publishedAt,
+          );
+          return [
+            `<article class="member-tool-card">
+              <p class="member-tool-news-meta">${escapeHtml(publisher)}${publishedAt ? ` · ${escapeHtml(publishedAt)}` : ''}</p>
+              <h3><a class="member-tool-news-title" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(title)}</a></h3>
+            </article>`,
+          ];
+        });
+        root.innerHTML = `${header}
+          <p class="note">Latest headlines from the public market-news feed. Headline links open the associated story page. Market data by <a href="https://biquote.io/" target="_blank" rel="noopener noreferrer">biquote</a>.</p>
+          <div class="member-tool-list">${cards.length ? cards.join('') : '<p class="note">No current headlines were returned.</p>'}</div>`;
+      } catch {
+        if (requestId !== publicContentRequest || page !== 'News') return;
+        root.innerHTML = `${header}<p class="note" role="alert">Market headlines are temporarily unavailable from the public provider. Try again later.</p>`;
+      }
+    })();
   };
 
   const renderCalendar = () => {
-    root.innerHTML = `<div class="head"><div><div class="lbl">External economic calendars</div><div class="bal">Economic calendar</div></div></div>
-      <p class="note">These providers publish current event times and impact estimates. Confirm time zones and releases with the source before relying on them.</p>
-      <div class="member-tool-card"><h3>Investing.com</h3><p>Global macroeconomic release calendar.</p><a class="btn alt" href="https://www.investing.com/economic-calendar/" target="_blank" rel="noopener noreferrer">Open economic calendar</a></div>
-      <div class="member-tool-card"><h3>Forex Factory</h3><p>Currency-focused economic event calendar.</p><a class="btn alt" href="https://www.forexfactory.com/calendar" target="_blank" rel="noopener noreferrer">Open Forex Factory</a></div>`;
+    const requestId = ++publicContentRequest;
+    const header = `<div class="head"><div><div class="lbl">Upcoming public releases</div><div class="bal">Economic calendar</div></div></div>`;
+    root.innerHTML = `${header}<p class="note">Loading upcoming economic events…</p>`;
+    void (async () => {
+      try {
+        const payload = await requestPublicJson(
+          'economic-calendar',
+          'https://biquote.io/api/Calendar/upcoming?limit=50',
+        );
+        if (!Array.isArray(payload)) {
+          throw new Error('The public calendar provider returned an unexpected response.');
+        }
+        if (requestId !== publicContentRequest || page !== 'Economic calendar') return;
+
+        const now = Date.now();
+        const events = payload.flatMap((value) => {
+          if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+          const event = value as Record<string, unknown>;
+          const time = typeof event.time === 'string' ? event.time : '';
+          const timestamp = new Date(time).getTime();
+          const title = String(event.name ?? event.title ?? '').trim();
+          if (!title || !Number.isFinite(timestamp) || timestamp < now) return [];
+          const currency = String(event.currency ?? event.countryCode ?? 'Global');
+          const importance = String(event.importance ?? '—');
+          const source = String(event.source ?? 'Economic calendar');
+          const sourceUrl = safeExternalUrl(event.sourceUrl);
+          const eventFacts = (label: string, item: unknown) =>
+            `<span><small>${label}</small><b>${escapeHtml(item == null ? '—' : String(item))}</b></span>`;
+          return [
+            {
+              timestamp,
+              markup: `<article class="member-tool-card">
+                <div class="member-tool-calendar-meta"><strong>${escapeHtml(currency)} · ${escapeHtml(importance)} impact</strong><time datetime="${escapeHtml(time)}">${escapeHtml(formatPublicDate(time))}</time></div>
+                <h3>${escapeHtml(title)}</h3>
+                <div class="member-tool-calendar-facts">${eventFacts('Actual', event.actual)}${eventFacts('Forecast', event.forecast)}${eventFacts('Previous', event.previous)}</div>
+                <p class="member-tool-calendar-source">${sourceUrl ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(source)}</a>` : escapeHtml(source)}</p>
+              </article>`,
+            },
+          ];
+        });
+        events.sort((first, second) => first.timestamp - second.timestamp);
+        const rows = events.slice(0, 30).map((event) => event.markup);
+        root.innerHTML = `${header}
+          <p class="note">Times are shown in your browser’s local time. Confirm releases with the listed source. Calendar data by <a href="https://biquote.io/" target="_blank" rel="noopener noreferrer">biquote</a>.</p>
+          <div class="member-tool-list">${rows.length ? rows.join('') : '<p class="note">No upcoming events were returned.</p>'}</div>`;
+      } catch {
+        if (requestId !== publicContentRequest || page !== 'Economic calendar') return;
+        root.innerHTML = `${header}<p class="note" role="alert">The economic calendar is temporarily unavailable from the public provider. Try again later.</p>`;
+      }
+    })();
   };
 
   const style = document.createElement('style');
@@ -408,14 +577,23 @@ export function installMemberDashboardTools() {
     .member-tool-heading{color:var(--mute);font-size:12px}
     .member-tool-symbol{display:grid;gap:4px;min-width:0}
     .member-tool-symbol small,.member-tool-alert-state{color:var(--mute);font-size:12px}
+    .member-tool-symbol .member-tool-quote-details{font-size:11px;line-height:1.4}
     .member-tool-number{text-align:right;font-variant-numeric:tabular-nums}
     .member-tool-action{white-space:nowrap}
     .member-tool-card{margin:12px 0;padding:18px;border:1px solid var(--line);border-radius:14px;background:var(--panel)}
     .member-tool-card h3{margin:0 0 8px;font-size:16px}
     .member-tool-card p{margin:0 0 14px;color:var(--mute);line-height:1.55}
     .member-tool-card a{display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
+    .member-tool-news-meta,.member-tool-calendar-source{color:var(--mute);font-size:12px}
+    .member-tool-news-title{color:var(--ink);line-height:1.45}
+    .member-tool-calendar-meta{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;margin-bottom:10px;color:var(--mute);font-size:12px}
+    .member-tool-calendar-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0}
+    .member-tool-calendar-facts span{display:grid;gap:4px}
+    .member-tool-calendar-facts small{color:var(--mute);font-size:11px}
+    .member-tool-calendar-facts b{font-variant-numeric:tabular-nums}
+    .member-tool-calendar-source{margin:8px 0 0!important}
     .member-tool-alert-form{grid-template-columns:1.4fr 1fr 1fr auto;align-items:end}
-    @media(max-width:760px){.member-tool-filters,.member-tool-alert-form{grid-template-columns:1fr}.member-tool-row{grid-template-columns:minmax(0,1fr) auto;gap:8px}.member-tool-heading{display:none}.member-tool-number{text-align:left}.member-tool-action{grid-column:1/-1;justify-self:start}}
+    @media(max-width:760px){.member-tool-filters,.member-tool-alert-form{grid-template-columns:1fr}.member-tool-row{grid-template-columns:minmax(0,1fr) auto;gap:8px}.member-tool-heading{display:none}.member-tool-number{text-align:left}.member-tool-action{grid-column:1/-1;justify-self:start}.member-tool-calendar-facts{grid-template-columns:repeat(3,minmax(0,1fr))}}
   `;
   document.head.appendChild(style);
 
