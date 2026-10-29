@@ -464,12 +464,217 @@ export function installMemberDashboardTools() {
       <div class="member-tool-card"><h3>No rewards program is configured</h3><p>This dashboard does not currently have reward rules or a rewards balance connected. No points or rewards are being calculated.</p><button class="btn alt" type="button" data-tool-action="navigate" data-destination="Help center">Open help center</button></div>`;
   };
 
+  // ---- Help center: support tickets -------------------------------------
+  // Tickets are not stored anywhere yet. Flip this to true once
+  // sendSupportTicket below is connected to Supabase.
+  const SUPPORT_TICKETS_CONNECTED = false;
+
+  type SupportTicketInput = {
+    email: string;
+    category: string;
+    priority: string;
+    subject: string;
+    reference: string;
+    message: string;
+  };
+  type SupportTicketRow = {
+    id: string;
+    subject: string;
+    category: string;
+    status: 'open' | 'in_review' | 'resolved';
+    createdAt: number;
+  };
+
+  const SUPPORT_CATEGORIES = [
+    'General question',
+    'Deposits',
+    'Account and verification',
+    'Market data',
+    'Technical issue',
+    'Other',
+  ];
+  const SUPPORT_PRIORITIES = ['Low', 'Normal', 'High'];
+  // Filled from Supabase later. Shape: SupportTicketRow.
+  const supportTickets: SupportTicketRow[] = [];
+
+  // TODO(supabase): send the ticket to the parent page with postMessage
+  // (same pattern as the deposit request), then insert it into a tickets
+  // table under the signed-in user's id. Resolve when saved, throw on error.
+  const sendSupportTicket = async (_ticket: SupportTicketInput) => {
+    if (!SUPPORT_TICKETS_CONNECTED) {
+      throw new Error(
+        'Support tickets are not connected yet, so nothing was sent. Please try again later.',
+      );
+    }
+  };
+
+  const memberEmail = () => {
+    const profile = (window as unknown as { __AUVRENTHIA_PROFILE__?: { email?: unknown } })
+      .__AUVRENTHIA_PROFILE__;
+    return typeof profile?.email === 'string' ? profile.email : '';
+  };
+
+  const ticketStatus: Record<SupportTicketRow['status'], [string, string]> = {
+    open: ['Open', 'r2'],
+    in_review: ['In review', 'r2'],
+    resolved: ['Resolved', 'r1'],
+  };
+
+  const ticketRowsMarkup = () =>
+    supportTickets.length
+      ? supportTickets
+          .map((ticket) => {
+            const [label, tone] = ticketStatus[ticket.status] || ticketStatus.open;
+            return `<div class="help-ticket-row"><div class="help-ticket-main"><b>${escapeHtml(ticket.subject)}</b><small>${escapeHtml(ticket.id)} · ${escapeHtml(ticket.category)} · ${escapeHtml(new Date(ticket.createdAt).toLocaleDateString())}</small></div><span class="risk ${tone}">${label}</span></div>`;
+          })
+          .join('')
+      : '<div class="help-empty"><b>No tickets yet</b><p>Tickets you open will appear here with their current status.</p></div>';
+
+  const helpFaqs: [string, string][] = [
+    [
+      'How do I make a deposit?',
+      'Open Deposit funds, choose an active payment method, send your payment, then attach a screenshot of the receipt. Always confirm the asset and network before paying, because transfers may be irreversible.',
+    ],
+    [
+      'Why has my deposit not been credited yet?',
+      'Deposits are not credited automatically. Each request stays pending until a staff member reviews it. If you need help with a specific request, open a ticket and include its request ID in the reference field.',
+    ],
+    [
+      'What can I upload as proof of payment?',
+      'A transfer screenshot or payment slip in PNG, JPG, or WebP format, up to 8 MB.',
+    ],
+    [
+      'How does account verification work?',
+      'Verification has three tiers: email verification, face verification, and a government ID showing your current address. You can see your status on the Security and verification page.',
+    ],
+    [
+      'Can I connect a crypto wallet?',
+      'Wallet connections are currently unavailable. Deposits are made by sending a payment to one of the listed payment methods.',
+    ],
+    [
+      'Where does the market data come from?',
+      'Quotes are fetched from TradingView, and headlines and calendar events come from public feeds. Prices can be delayed or temporarily unavailable.',
+    ],
+    [
+      'How do I download my account activity?',
+      'Open Statements and tax and choose Download activity CSV. The export is for your own records and is not an official statement, tax document, or tax advice.',
+    ],
+    [
+      'My question is not listed here. What should I do?',
+      'Open a support ticket using the form above. Describe what you were trying to do and what happened, so the team can help without asking you to repeat yourself.',
+    ],
+  ];
+
   const renderHelp = () => {
+    const categoryOptions = SUPPORT_CATEGORIES.map(
+      (category) => `<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`,
+    ).join('');
+    const priorityOptions = SUPPORT_PRIORITIES.map(
+      (priority) =>
+        `<option value="${escapeHtml(priority)}"${priority === 'Normal' ? ' selected' : ''}>${escapeHtml(priority)}</option>`,
+    ).join('');
+    const faqMarkup = helpFaqs
+      .map(
+        ([question, answer]) =>
+          `<details class="help-faq-item"><summary>${escapeHtml(question)}</summary><p>${escapeHtml(answer)}</p></details>`,
+      )
+      .join('');
+
     root.innerHTML = `<div class="head"><div><div class="lbl">Member support</div><div class="bal">Help center</div></div></div>
-      <div class="member-tool-card"><h3>Deposits</h3><p>Use an active payment method and follow the on-screen receipt steps. A request remains pending until it is reviewed.</p><button class="btn alt" type="button" data-tool-action="navigate" data-destination="Deposit funds">Open deposits</button></div>
-      <div class="member-tool-card"><h3>Account activity</h3><p>See recorded transactions and export the dashboard activity you have saved.</p><button class="btn alt" type="button" data-tool-action="navigate" data-destination="Statements and tax">Open activity export</button></div>
-      <div class="member-tool-card"><h3>Identity and security</h3><p>Review the verification status shown for your account.</p><button class="btn alt" type="button" data-tool-action="navigate" data-destination="Security and verification">Open verification</button></div>
-      <div class="member-tool-card"><h3>Market data</h3><p>Quotes are fetched directly from TradingView, with headlines and calendar events from public feeds. Historical chart candles still use the Supabase market-data function.</p><button class="btn alt" type="button" data-tool-action="navigate" data-destination="Screener">Open screener</button></div>`;
+      <p class="note">Find quick answers below, or open a ticket and our support team will follow up by email.</p>
+
+      <div class="help-quick">
+        <div class="member-tool-card"><h3>Deposits</h3><p>Use an active payment method and follow the on-screen receipt steps. A request remains pending until it is reviewed.</p><button class="btn alt" type="button" data-tool-action="navigate" data-destination="Deposit funds">Open deposits</button></div>
+        <div class="member-tool-card"><h3>Account activity</h3><p>See recorded transactions and export the dashboard activity you have saved.</p><button class="btn alt" type="button" data-tool-action="navigate" data-destination="Statements and tax">Open activity export</button></div>
+        <div class="member-tool-card"><h3>Identity and security</h3><p>Review the verification status shown for your account.</p><button class="btn alt" type="button" data-tool-action="navigate" data-destination="Security and verification">Open verification</button></div>
+        <div class="member-tool-card"><h3>Market data</h3><p>Quotes are fetched directly from TradingView, with headlines and calendar events from public feeds. Historical chart candles still use the Supabase market-data function.</p><button class="btn alt" type="button" data-tool-action="navigate" data-destination="Screener">Open screener</button></div>
+      </div>
+
+      <h2 class="sec">Contact support</h2>
+      <div class="mp help-ticket" id="help-ticket-card">
+        <div class="mph"><div><h3>Open a support ticket</h3><small>Tell us what you need help with. We reply to the email address below.</small></div></div>
+        <div class="help-grid">
+          <div><label class="fl" for="help-email">Your email</label><input class="help-input" id="help-email" type="email" autocomplete="email" maxlength="254" placeholder="you@example.com" value="${escapeHtml(memberEmail())}"></div>
+          <div><label class="fl" for="help-category">Category</label><select class="sel" id="help-category">${categoryOptions}</select></div>
+          <div><label class="fl" for="help-priority">Priority</label><select class="sel" id="help-priority">${priorityOptions}</select></div>
+          <div><label class="fl" for="help-reference">Reference <span class="help-optional">(optional)</span></label><input class="help-input" id="help-reference" type="text" maxlength="80" placeholder="e.g. a deposit request ID"></div>
+        </div>
+        <label class="fl" for="help-subject">Subject</label>
+        <input class="help-input" id="help-subject" type="text" maxlength="120" placeholder="Short summary of the issue">
+        <label class="fl" for="help-message">Message</label>
+        <textarea class="help-input help-textarea" id="help-message" rows="6" maxlength="2000" placeholder="Describe what you were trying to do and what happened."></textarea>
+        <div class="hint">Never share your password or full recovery details in a ticket.</div>
+        <div class="err" id="help-ticket-error" role="alert"></div>
+        <div class="help-success" id="help-ticket-success" role="status" hidden></div>
+        <div class="deposit-actions"><button class="btn" type="button" id="help-ticket-submit" data-tool-action="submit-ticket">Submit ticket</button></div>
+      </div>
+
+      <h2 class="sec">Your tickets</h2>
+      <div class="mp help-tickets" id="help-ticket-list">${ticketRowsMarkup()}</div>
+
+      <h2 class="sec">Frequently asked questions</h2>
+      <div class="help-faq">${faqMarkup}</div>`;
+  };
+
+  const submitSupportTicket = async (button: HTMLElement) => {
+    const read = (id: string) =>
+      (root.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`#${id}`)
+        ?.value || '').trim();
+    const errorBox = root.querySelector<HTMLElement>('#help-ticket-error');
+    const successBox = root.querySelector<HTMLElement>('#help-ticket-success');
+    const fail = (message: string) => {
+      if (successBox) successBox.hidden = true;
+      if (errorBox) errorBox.textContent = message;
+    };
+    if (errorBox) errorBox.textContent = '';
+    if (successBox) successBox.hidden = true;
+
+    const ticket: SupportTicketInput = {
+      email: read('help-email'),
+      category: read('help-category'),
+      priority: read('help-priority'),
+      subject: read('help-subject'),
+      reference: read('help-reference'),
+      message: read('help-message'),
+    };
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(ticket.email) || ticket.email.length > 254) {
+      fail('Enter a valid email address so we can reply to you.');
+      return;
+    }
+    if (!SUPPORT_CATEGORIES.includes(ticket.category) || !SUPPORT_PRIORITIES.includes(ticket.priority)) {
+      fail('Choose a category and priority.');
+      return;
+    }
+    if (ticket.subject.length < 3 || ticket.subject.length > 120) {
+      fail('Enter a subject between 3 and 120 characters.');
+      return;
+    }
+    if (ticket.message.length < 20 || ticket.message.length > 2000) {
+      fail('Describe the issue in 20 to 2,000 characters so we can help.');
+      return;
+    }
+
+    button.setAttribute('disabled', 'true');
+    try {
+      await sendSupportTicket(ticket);
+      ['help-subject', 'help-reference', 'help-message'].forEach((id) => {
+        const field = root.querySelector<HTMLInputElement | HTMLTextAreaElement>(`#${id}`);
+        if (field) field.value = '';
+      });
+      if (successBox) {
+        successBox.textContent = 'Your ticket was submitted. We will reply by email.';
+        successBox.hidden = false;
+      }
+    } catch (error) {
+      fail(
+        error instanceof Error
+          ? error.message
+          : 'We could not submit your ticket. Please try again.',
+      );
+    } finally {
+      button.removeAttribute('disabled');
+    }
   };
 
   const renderNews = () => {
@@ -593,6 +798,35 @@ export function installMemberDashboardTools() {
     .member-tool-calendar-facts b{font-variant-numeric:tabular-nums}
     .member-tool-calendar-source{margin:8px 0 0!important}
     .member-tool-alert-form{grid-template-columns:1.4fr 1fr 1fr auto;align-items:end}
+    .help-quick{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    .help-quick .member-tool-card{margin:0;display:flex;flex-direction:column;align-items:flex-start}
+    .help-quick .member-tool-card p{flex:1}
+    .help-ticket{max-width:900px}
+    .help-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:16px}
+    .help-input{width:100%;min-width:0;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font:inherit}
+    .help-input:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 25%,transparent)}
+    .help-textarea{resize:vertical;min-height:132px;line-height:1.5}
+    .help-optional{font-weight:400}
+    .help-success{margin:8px 0;padding:11px 14px;border-radius:10px;font-size:14px;font-weight:600;background:color-mix(in srgb,var(--up) 15%,transparent);color:var(--up)}
+    .help-success[hidden]{display:none}
+    .help-tickets{max-width:900px;padding:6px 18px}
+    .help-ticket-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 0;border-top:1px solid var(--line)}
+    .help-ticket-row:first-child{border-top:0}
+    .help-ticket-main{display:grid;gap:4px;min-width:0}
+    .help-ticket-main small{color:var(--mute);font-size:12px}
+    .help-empty{padding:18px 0;text-align:center}
+    .help-empty p{margin:6px 0 0;color:var(--mute);font-size:14px}
+    .help-faq{max-width:900px;border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-top:12px}
+    .help-faq-item{border-top:1px solid var(--line)}
+    .help-faq-item:first-child{border-top:0}
+    .help-faq-item summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 18px;cursor:pointer;font-weight:600;list-style:none}
+    .help-faq-item summary::-webkit-details-marker{display:none}
+    .help-faq-item summary::after{content:"+";flex:none;color:var(--mute);font-size:20px;line-height:1}
+    .help-faq-item[open] summary::after{content:"−"}
+    .help-faq-item summary:hover{background:color-mix(in srgb,var(--ink) 4%,transparent)}
+    .help-faq-item summary:focus-visible{outline:2px solid var(--brand);outline-offset:-2px}
+    .help-faq-item p{margin:0;padding:0 18px 18px;color:var(--mute);line-height:1.6;max-width:70ch}
+    @media(max-width:760px){.help-quick,.help-grid{grid-template-columns:1fr}}
     @media(max-width:760px){.member-tool-filters,.member-tool-alert-form{grid-template-columns:1fr}.member-tool-row{grid-template-columns:minmax(0,1fr) auto;gap:8px}.member-tool-heading{display:none}.member-tool-number{text-align:left}.member-tool-action{grid-column:1/-1;justify-self:start}.member-tool-calendar-facts{grid-template-columns:repeat(3,minmax(0,1fr))}}
   `;
   document.head.appendChild(style);
@@ -668,6 +902,8 @@ export function installMemberDashboardTools() {
         void checkAlerts().finally(() => button.removeAttribute('disabled'));
       } else if (action === 'export-activity') {
         downloadActivity();
+      } else if (action === 'submit-ticket') {
+        void submitSupportTicket(button);
       }
     });
   }
