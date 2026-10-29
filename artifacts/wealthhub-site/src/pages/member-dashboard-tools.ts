@@ -459,9 +459,96 @@ export function installMemberDashboardTools() {
       <p class="note">This export is for your records only. It is not an official statement, tax document, or tax advice. Investment-plan projections are not included as completed transactions.</p>`;
   };
 
-  const renderRewards = () => {
-    root.innerHTML = `<div class="head"><div><div class="lbl">Account benefits</div><div class="bal">Rewards</div></div></div>
-      <div class="member-tool-card"><h3>No rewards program is configured</h3><p>This dashboard does not currently have reward rules or a rewards balance connected. No points or rewards are being calculated.</p><button class="btn alt" type="button" data-tool-action="navigate" data-destination="Help center">Open help center</button></div>`;
+  // ---- Referral (frontend only) -----------------------------------------
+  // Nothing here is connected yet. Fill referralState and referralHistory
+  // from your database; the link and code come from the member's account.
+  type ReferralStatus = 'invited' | 'joined' | 'rewarded';
+  const referralState: {
+    link: string;
+    code: string;
+    invited: number;
+    joined: number;
+    earned: string;
+  } = { link: '', code: '', invited: 0, joined: 0, earned: '—' };
+  const referralHistory: { name: string; status: ReferralStatus; date: number }[] = [];
+
+  const referralStatusLabel: Record<ReferralStatus, [string, string]> = {
+    invited: ['Invited', 'security-badge-muted'],
+    joined: ['Joined', 'r2'],
+    rewarded: ['Rewarded', 'r1'],
+  };
+
+  const copyReferralText = async (text: string, field: HTMLInputElement | null) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      if (!field) return false;
+      field.focus();
+      field.select();
+      try {
+        return document.execCommand('copy');
+      } catch {
+        return false;
+      }
+    }
+  };
+
+  const renderReferral = () => {
+    const hasLink = referralState.link.length > 0;
+    const hasCode = referralState.code.length > 0;
+    const field = (id: string, label: string, value: string, empty: string, target: string, button: string) =>
+      `<label class="fl" for="${id}">${label}</label><div class="referral-field"><input class="help-input" id="${id}" type="text" readonly value="${escapeHtml(value)}" placeholder="${escapeHtml(empty)}"><button class="btn alt" type="button" data-tool-action="copy-referral" data-copy-target="${target}"${value ? '' : ' disabled aria-disabled="true"'}>${button}</button></div>`;
+    const historyMarkup = referralHistory.length
+      ? referralHistory
+          .map((entry) => {
+            const [label, tone] = referralStatusLabel[entry.status] || referralStatusLabel.invited;
+            return `<div class="help-ticket-row"><div class="help-ticket-main"><b>${escapeHtml(entry.name)}</b><small>${escapeHtml(new Date(entry.date).toLocaleDateString())}</small></div><span class="risk ${tone}">${label}</span></div>`;
+          })
+          .join('')
+      : '<div class="help-empty"><b>No referrals yet</b><p>Friends who join with your link will appear here with their status.</p></div>';
+
+    root.innerHTML = `<div class="head"><div><div class="lbl">Invite friends</div><div class="bal">Referral</div></div></div>
+      <p class="note">Share your personal referral link. When friends join with it, you can follow their progress here.</p>
+
+      <h2 class="sec">Your referral link</h2>
+      <div class="mp referral-card">
+        ${field('referral-link', 'Referral link', referralState.link, 'Your referral link is not available yet', 'link', 'Copy link')}
+        ${field('referral-code', 'Referral code', referralState.code, 'Your referral code is not available yet', 'code', 'Copy code')}
+        <div class="security-notice" id="referral-notice" role="status" hidden></div>
+        ${hasLink || hasCode ? '' : '<p class="hint">Your link will appear here once referrals are available on your account.</p>'}
+      </div>
+
+      <div class="referral-stats">
+        <div class="referral-stat"><span>Friends invited</span><b>${referralState.invited}</b></div>
+        <div class="referral-stat"><span>Friends joined</span><b>${referralState.joined}</b></div>
+        <div class="referral-stat"><span>Rewards earned</span><b>${escapeHtml(referralState.earned)}</b></div>
+      </div>
+
+      <h2 class="sec">How it works</h2>
+      <div class="referral-steps">
+        <div class="member-tool-card"><h3>1. Share your link</h3><p>Send your referral link or code to friends and family.</p></div>
+        <div class="member-tool-card"><h3>2. They join</h3><p>Your friend creates an account using your link or code.</p></div>
+        <div class="member-tool-card"><h3>3. Track progress</h3><p>See each referral and any rewards in the list below.</p></div>
+      </div>
+
+      <h2 class="sec">Your referrals</h2>
+      <div class="mp help-tickets" id="referral-history">${historyMarkup}</div>
+      <p class="hint">Program terms apply. If you have a question about a referral, contact support.</p>
+      <button class="btn alt" type="button" data-tool-action="navigate" data-destination="Help center">Contact support</button>`;
+  };
+
+  const copyReferral = async (button: HTMLElement) => {
+    const target = button.dataset.copyTarget === 'code' ? 'code' : 'link';
+    const input = root.querySelector<HTMLInputElement>(target === 'code' ? '#referral-code' : '#referral-link');
+    const notice = root.querySelector<HTMLElement>('#referral-notice');
+    const ok = !!input?.value && (await copyReferralText(input.value, input));
+    if (notice) {
+      notice.textContent = ok
+        ? `Referral ${target} copied.`
+        : 'Could not copy automatically. Select the text and copy it manually.';
+      notice.hidden = false;
+    }
   };
 
   // ---- Help center: support tickets -------------------------------------
@@ -739,9 +826,21 @@ export function installMemberDashboardTools() {
     return '';
   };
 
-  const renderSecurity = () => {
-    const verifiedCount = securityState.tiers.filter((status) => status === 'verified').length;
-    const tierMarkup = verificationTiers
+  // Name of your existing verification page (its nav label, e.g. the value of
+  // data-p on that nav item). Leave as null to show the tiers inside this page.
+  const VERIFICATION_PAGE: string | null = null;
+  let securityView: 'overview' | 'verification' = 'overview';
+
+  const verificationSummary = (): [string, string] => {
+    const tiers = securityState.tiers;
+    if (tiers.every((status) => status === 'verified')) return ['Verified', 'r1'];
+    if (tiers.includes('rejected')) return ['Action required', 'r3'];
+    if (tiers.includes('pending')) return ['Pending review', 'r2'];
+    return ['Not verified', 'security-badge-muted'];
+  };
+
+  const tiersMarkup = () =>
+    verificationTiers
       .map(([title, detail, buttonLabel, action], index) => {
         const status = securityState.tiers[index];
         const [label, tone] = tierStatusLabel[status];
@@ -761,22 +860,31 @@ export function installMemberDashboardTools() {
       })
       .join('');
 
+  const renderSecurity = () => {
+    const verifiedCount = securityState.tiers.filter((status) => status === 'verified').length;
+
+    if (securityView === 'verification') {
+      root.innerHTML = `<button class="btn alt security-back" type="button" data-tool-action="security-back">← Back to security</button>
+        <div class="head"><div><div class="lbl">Account protection</div><div class="bal">Identity verification</div></div><span class="risk ${verifiedCount === 3 ? 'r1' : 'security-badge-muted'}">${verifiedCount} of 3 tiers verified</span></div>
+        <p class="note">Complete the tiers in order. Each tier adds another identity check.</p>
+        <div class="security-notice" id="security-notice" role="status" hidden></div>
+        <div class="mp security-card">
+          <ol class="security-list" aria-label="Verification tiers">${tiersMarkup()}</ol>
+          <p class="hint">Documents you submit are reviewed by our team and are visible only to you and authorized staff.</p>
+        </div>`;
+      return;
+    }
+
+    const [summaryLabel, summaryTone] = verificationSummary();
     const twoFactorLabel = securityState.twoFactorEnabled ? ['On', 'r1'] : ['Off', 'security-badge-muted'];
     const row = (title: string, detail: string, side: string) =>
       `<li class="security-item"><div class="security-item-main"><b>${escapeHtml(title)}</b><small>${detail}</small></div><div class="security-item-side">${side}</div></li>`;
     const actionButton = (label: string, action: string) =>
       `<button class="btn alt" type="button" data-tool-action="security-action" data-security-action="${action}">${escapeHtml(label)}</button>`;
 
-    root.innerHTML = `<div class="head"><div><div class="lbl">Account protection</div><div class="bal">Security and verification</div></div><span class="risk ${verifiedCount === 3 ? 'r1' : 'security-badge-muted'}">${verifiedCount} of 3 tiers verified</span></div>
-      <p class="note">Verify your identity and keep your account protected. Complete the tiers in order.</p>
+    root.innerHTML = `<div class="head"><div><div class="lbl">Account protection</div><div class="bal">Security and verification</div></div></div>
+      <p class="note">Keep your account protected and check the status of your identity verification.</p>
       <div class="security-notice" id="security-notice" role="status" hidden></div>
-
-      <h2 class="sec">Identity verification</h2>
-      <div class="mp security-card">
-        <div class="mph"><div><h3>Verification tiers</h3><small>Each tier adds another identity check.</small></div></div>
-        <ol class="security-list" aria-label="Verification tiers">${tierMarkup}</ol>
-        <p class="hint">Documents you submit are reviewed by our team and are visible only to you and authorized staff.</p>
-      </div>
 
       <h2 class="sec">Account security</h2>
       <div class="mp security-card">
@@ -788,8 +896,29 @@ export function installMemberDashboardTools() {
         </ul>
       </div>
 
-      <h2 class="sec">Staying safe</h2>
-      <div class="member-tool-card"><h3>Protect your account</h3><p>Never share your password or one-time codes with anyone. Our staff will never ask for them. Always check the address and network before sending a payment.</p><button class="btn alt" type="button" data-tool-action="navigate" data-destination="Help center">Contact support</button></div>`;
+      <div class="member-tool-card"><h3>Protect your account</h3><p>Never share your password or one-time codes with anyone. Our staff will never ask for them. Always check the address and network before sending a payment.</p><button class="btn alt" type="button" data-tool-action="navigate" data-destination="Help center">Contact support</button></div>
+
+      <h2 class="sec">Identity verification</h2>
+      <button class="security-status-bar" type="button" data-tool-action="open-verification" aria-label="Open identity verification. Status: ${escapeHtml(summaryLabel)}">
+        <span class="security-status-text"><b>Identity verification</b><small>${verifiedCount} of 3 tiers verified</small></span>
+        <span class="security-status-side"><span class="risk ${summaryTone}">${summaryLabel}</span><span class="security-chevron" aria-hidden="true">›</span></span>
+      </button>`;
+  };
+
+  const openSecurityView = (view: 'overview' | 'verification') => {
+    securityView = view;
+    renderSecurity();
+    window.scrollTo(0, 0);
+  };
+
+  const openVerification = () => {
+    if (VERIFICATION_PAGE) {
+      document.querySelectorAll<HTMLButtonElement>('#nav .nav').forEach((nav) => {
+        if (nav.dataset.p === VERIFICATION_PAGE) nav.click();
+      });
+      return;
+    }
+    openSecurityView('verification');
   };
 
   const handleSecurityAction = async (button: HTMLElement) => {
@@ -975,7 +1104,27 @@ export function installMemberDashboardTools() {
     .security-notice{max-width:900px;margin:0 0 8px;padding:11px 14px;border-radius:10px;font-size:14px;font-weight:600;background:color-mix(in srgb,var(--brand) 12%,transparent);color:var(--brand)}
     .security-notice[hidden]{display:none}
     .security-card .hint{margin-top:14px}
-    @media(max-width:760px){.help-grid{grid-template-columns:1fr}.security-item{flex-direction:column;align-items:flex-start}.security-item-side{justify-content:flex-start}}
+    .security-status-bar{display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;max-width:900px;margin-top:12px;padding:16px 18px;border:1px solid var(--line);border-radius:14px;background:none;color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+    .security-status-bar:hover{background:color-mix(in srgb,var(--ink) 4%,transparent)}
+    .security-status-bar:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+    .security-status-text{display:grid;gap:4px;min-width:0}
+    .security-status-text small{color:var(--mute);font-size:13px}
+    .security-status-side{display:flex;align-items:center;gap:12px;flex:none}
+    .security-chevron{color:var(--mute);font-size:24px;line-height:1}
+    .security-back{margin-bottom:18px;padding:9px 16px;font-size:14px}
+    .referral-card{max-width:900px}
+    .referral-field{display:flex;align-items:center;gap:10px}
+    .referral-field .help-input{flex:1}
+    .referral-field .btn{flex:none;padding:10px 18px;font-size:14px}
+    .referral-field .btn[disabled]{opacity:.5;cursor:not-allowed;transform:none;filter:none}
+    .referral-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;max-width:900px;margin-top:12px}
+    .referral-stat{display:grid;gap:6px;padding:16px 18px;border:1px solid var(--line);border-radius:14px}
+    .referral-stat span{color:var(--mute);font-size:13px}
+    .referral-stat b{font-size:24px;letter-spacing:-.02em}
+    .referral-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;max-width:900px}
+    .referral-steps .member-tool-card{margin:0}
+    .referral-steps .member-tool-card p{margin:0}
+    @media(max-width:760px){.referral-stats,.referral-steps{grid-template-columns:1fr}.referral-field{flex-wrap:wrap}.help-grid{grid-template-columns:1fr}.security-item{flex-direction:column;align-items:flex-start}.security-item-side{justify-content:flex-start}}
     @media(max-width:760px){.member-tool-filters,.member-tool-alert-form{grid-template-columns:1fr}.member-tool-row{grid-template-columns:minmax(0,1fr) auto;gap:8px}.member-tool-heading{display:none}.member-tool-number{text-align:left}.member-tool-action{grid-column:1/-1;justify-self:start}.member-tool-calendar-facts{grid-template-columns:repeat(3,minmax(0,1fr))}}
   `;
   document.head.appendChild(style);
@@ -1055,6 +1204,12 @@ export function installMemberDashboardTools() {
         void submitSupportTicket(button);
       } else if (action === 'security-action') {
         void handleSecurityAction(button);
+      } else if (action === 'open-verification') {
+        openVerification();
+      } else if (action === 'security-back') {
+        openSecurityView('overview');
+      } else if (action === 'copy-referral') {
+        void copyReferral(button);
       }
     });
   }
@@ -1065,9 +1220,12 @@ export function installMemberDashboardTools() {
   R.News = renderNews;
   R['Economic calendar'] = renderCalendar;
   R['Statements and tax'] = renderStatements;
-  R.Rewards = renderRewards;
+  R.Referral = renderReferral;
   R['Help center'] = renderHelp;
-  R['Security and verification'] = renderSecurity;
+  R['Security and verification'] = () => {
+    securityView = 'overview';
+    renderSecurity();
+  };
 
   if (!Array.isArray(ST.watchlist)) ST.watchlist = [];
   if (!Array.isArray(ST.priceAlerts)) ST.priceAlerts = [];
