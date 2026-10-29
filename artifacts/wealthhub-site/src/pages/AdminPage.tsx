@@ -93,12 +93,14 @@ const EMPTY_ADMIN_STATE: Record<string, unknown> = {
 
 const STAFF_ROLE_LABELS: Record<AppProfile['role'], string> = {
   member: 'Member',
+  admin: 'Admin',
   owner: 'Owner',
   finance: 'Finance',
   support: 'Support',
 };
 
 const STAFF_ROLE_KEYS: Record<string, AppProfile['role']> = {
+  Admin: 'admin',
   Owner: 'owner',
   Finance: 'finance',
   Support: 'support',
@@ -446,6 +448,25 @@ function buildAdminDocument(bootstrap: AdminBootstrap) {
 
   html = replaceRequired(
     html,
+    'const ROLES={Owner:["*"],Finance:["money"],Support:["kyc","support","announce"]},can=',
+    'const ROLES={Owner:["*"],Admin:["*"],Finance:["money"],Support:["kyc","support","announce"]},can=',
+    'full-access admin role',
+  );
+  html = replaceRequired(
+    html,
+    'o:["Finance","Support","Owner"]',
+    'o:["Finance","Support","Owner","Admin"]',
+    'admin invitation role',
+  );
+  html = replaceRequired(
+    html,
+    'o:["Owner","Finance","Support"]',
+    'o:["Owner","Admin","Finance","Support"]',
+    'admin team role',
+  );
+
+  html = replaceRequired(
+    html,
     '<div class="top"><button class="ic menu" data-a="menu" aria-label="Open menu">&#9776;</button><b id="who"></b><button class="ic" data-a="theme" aria-label="Switch light or dark mode">&#9680;</button><button class="btn alt sm" data-a="logout">Sign out</button></div>',
     adminTopBar,
     'admin header',
@@ -630,7 +651,7 @@ export default function AdminPage() {
           if (
             !qrStoragePath &&
             qrDataUrl?.startsWith('data:image/') &&
-            ['owner', 'finance'].includes(profile.role)
+            ['admin', 'owner', 'finance'].includes(profile.role)
           ) {
             if (!/^[A-Za-z0-9_-]{1,120}$/.test(row.id)) {
               throw new Error(
