@@ -692,6 +692,127 @@ export function installMemberDashboardTools() {
     }
   };
 
+  // ---- Security and verification (frontend only) ------------------------
+  // Nothing here is connected yet. Set SECURITY_CONNECTED to true once the
+  // actions in runSecurityAction are wired up, and fill securityState from
+  // your database so the statuses are real.
+  const SECURITY_CONNECTED = false;
+
+  type TierStatus = 'not_started' | 'pending' | 'verified' | 'rejected';
+  const securityState: {
+    tiers: [TierStatus, TierStatus, TierStatus];
+    rejectionReasons: [string, string, string];
+    twoFactorEnabled: boolean;
+  } = {
+    tiers: ['not_started', 'not_started', 'not_started'],
+    rejectionReasons: ['', '', ''],
+    twoFactorEnabled: false,
+  };
+
+  const tierStatusLabel: Record<TierStatus, [string, string]> = {
+    not_started: ['Not started', 'security-badge-muted'],
+    pending: ['Pending review', 'r2'],
+    verified: ['Verified', 'r1'],
+    rejected: ['Action required', 'r3'],
+  };
+
+  const verificationTiers: [string, string, string, string][] = [
+    ['Tier 1 · Email verification', 'Confirm the email address on your account.', 'Verify email', 'verify-email'],
+    ['Tier 2 · Face verification', 'Complete a face check after your email is verified.', 'Start face check', 'start-face-check'],
+    ['Tier 3 · Government ID with address', 'Submit an eligible ID showing your current residential address.', 'Upload documents', 'upload-documents'],
+  ];
+
+  const maskedEmail = () => {
+    const email = memberEmail();
+    const at = email.indexOf('@');
+    if (at < 1) return 'Not available';
+    return `${email.slice(0, Math.min(2, at))}***${email.slice(at)}`;
+  };
+
+  // TODO: connect each action (email verification, face check provider,
+  // document upload, password change, two-factor setup, sign out everywhere).
+  const runSecurityAction = async (action: string): Promise<string> => {
+    void action;
+    if (!SECURITY_CONNECTED) {
+      return 'This action is not available yet. Nothing was changed.';
+    }
+    return '';
+  };
+
+  const renderSecurity = () => {
+    const verifiedCount = securityState.tiers.filter((status) => status === 'verified').length;
+    const tierMarkup = verificationTiers
+      .map(([title, detail, buttonLabel, action], index) => {
+        const status = securityState.tiers[index];
+        const [label, tone] = tierStatusLabel[status];
+        const previousDone = index === 0 || securityState.tiers[index - 1] === 'verified';
+        const reason = status === 'rejected' && securityState.rejectionReasons[index]
+          ? `<small class="security-reason">${escapeHtml(securityState.rejectionReasons[index])}</small>`
+          : '';
+        let control = '';
+        if (status === 'not_started' || status === 'rejected') {
+          const text = status === 'rejected' ? 'Try again' : buttonLabel;
+          control = `<button class="btn alt" type="button" data-tool-action="security-action" data-security-action="${escapeHtml(action)}"${previousDone ? '' : ' disabled aria-disabled="true"'}>${escapeHtml(text)}</button>`;
+        }
+        const lockNote = !previousDone && status === 'not_started'
+          ? `<small class="security-lock">Complete Tier ${index} first.</small>`
+          : '';
+        return `<li class="security-item"><div class="security-item-main"><b>${escapeHtml(title)}</b><small>${escapeHtml(detail)}</small>${reason}${lockNote}</div><div class="security-item-side"><span class="risk ${tone}">${label}</span>${control}</div></li>`;
+      })
+      .join('');
+
+    const twoFactorLabel = securityState.twoFactorEnabled ? ['On', 'r1'] : ['Off', 'security-badge-muted'];
+    const row = (title: string, detail: string, side: string) =>
+      `<li class="security-item"><div class="security-item-main"><b>${escapeHtml(title)}</b><small>${detail}</small></div><div class="security-item-side">${side}</div></li>`;
+    const actionButton = (label: string, action: string) =>
+      `<button class="btn alt" type="button" data-tool-action="security-action" data-security-action="${action}">${escapeHtml(label)}</button>`;
+
+    root.innerHTML = `<div class="head"><div><div class="lbl">Account protection</div><div class="bal">Security and verification</div></div><span class="risk ${verifiedCount === 3 ? 'r1' : 'security-badge-muted'}">${verifiedCount} of 3 tiers verified</span></div>
+      <p class="note">Verify your identity and keep your account protected. Complete the tiers in order.</p>
+      <div class="security-notice" id="security-notice" role="status" hidden></div>
+
+      <h2 class="sec">Identity verification</h2>
+      <div class="mp security-card">
+        <div class="mph"><div><h3>Verification tiers</h3><small>Each tier adds another identity check.</small></div></div>
+        <ol class="security-list" aria-label="Verification tiers">${tierMarkup}</ol>
+        <p class="hint">Documents you submit are reviewed by our team and are visible only to you and authorized staff.</p>
+      </div>
+
+      <h2 class="sec">Account security</h2>
+      <div class="mp security-card">
+        <ul class="security-list" aria-label="Account security">
+          ${row('Email address', escapeHtml(maskedEmail()), '')}
+          ${row('Password', 'Use a strong password that you do not use anywhere else.', actionButton('Change password', 'change-password'))}
+          ${row('Two-factor authentication', 'Add a one-time code from an authenticator app when you sign in.', `<span class="risk ${twoFactorLabel[1]}">${twoFactorLabel[0]}</span>${actionButton(securityState.twoFactorEnabled ? 'Manage' : 'Enable', 'two-factor')}`)}
+          ${row('Active sessions', 'Sign out of every device where you are currently signed in.', actionButton('Sign out of all devices', 'sign-out-all'))}
+        </ul>
+      </div>
+
+      <h2 class="sec">Staying safe</h2>
+      <div class="member-tool-card"><h3>Protect your account</h3><p>Never share your password or one-time codes with anyone. Our staff will never ask for them. Always check the address and network before sending a payment.</p><button class="btn alt" type="button" data-tool-action="navigate" data-destination="Help center">Contact support</button></div>`;
+  };
+
+  const handleSecurityAction = async (button: HTMLElement) => {
+    const action = button.dataset.securityAction || '';
+    const notice = root.querySelector<HTMLElement>('#security-notice');
+    button.setAttribute('disabled', 'true');
+    try {
+      const message = await runSecurityAction(action);
+      if (notice && message) {
+        notice.textContent = message;
+        notice.hidden = false;
+      }
+    } catch (error) {
+      if (notice) {
+        notice.textContent =
+          error instanceof Error ? error.message : 'Something went wrong. Please try again.';
+        notice.hidden = false;
+      }
+    } finally {
+      button.removeAttribute('disabled');
+    }
+  };
+
   const renderNews = () => {
     const requestId = ++publicContentRequest;
     const header = `<div class="head"><div><div class="lbl">Live market coverage</div><div class="bal">News</div></div></div>`;
@@ -840,7 +961,21 @@ export function installMemberDashboardTools() {
     .help-faq-item p{margin:0;padding:0 18px 14px;color:var(--mute);line-height:1.6;max-width:70ch}
     .help-faq-item p:last-child{padding-bottom:18px}
     .help-faq-action{padding:0 18px 18px}
-    @media(max-width:760px){.help-grid{grid-template-columns:1fr}}
+    .security-card{max-width:900px}
+    .security-list{display:grid;gap:10px;list-style:none;padding:0;margin:14px 0 0}
+    .security-item{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 16px;border:1px solid var(--line);border-radius:12px}
+    .security-item-main{display:grid;gap:4px;min-width:0}
+    .security-item-main small{color:var(--mute);font-size:13px;line-height:1.5}
+    .security-item-main .security-reason{color:var(--dn)}
+    .security-item-main .security-lock{font-size:12px}
+    .security-item-side{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:10px;flex:none}
+    .security-item-side .btn{padding:9px 16px;font-size:14px;white-space:nowrap}
+    .security-item-side .btn[disabled]{opacity:.5;cursor:not-allowed;transform:none;filter:none}
+    .security-badge-muted{background:color-mix(in srgb,var(--mute) 15%,transparent);color:var(--mute)}
+    .security-notice{max-width:900px;margin:0 0 8px;padding:11px 14px;border-radius:10px;font-size:14px;font-weight:600;background:color-mix(in srgb,var(--brand) 12%,transparent);color:var(--brand)}
+    .security-notice[hidden]{display:none}
+    .security-card .hint{margin-top:14px}
+    @media(max-width:760px){.help-grid{grid-template-columns:1fr}.security-item{flex-direction:column;align-items:flex-start}.security-item-side{justify-content:flex-start}}
     @media(max-width:760px){.member-tool-filters,.member-tool-alert-form{grid-template-columns:1fr}.member-tool-row{grid-template-columns:minmax(0,1fr) auto;gap:8px}.member-tool-heading{display:none}.member-tool-number{text-align:left}.member-tool-action{grid-column:1/-1;justify-self:start}.member-tool-calendar-facts{grid-template-columns:repeat(3,minmax(0,1fr))}}
   `;
   document.head.appendChild(style);
@@ -918,6 +1053,8 @@ export function installMemberDashboardTools() {
         downloadActivity();
       } else if (action === 'submit-ticket') {
         void submitSupportTicket(button);
+      } else if (action === 'security-action') {
+        void handleSecurityAction(button);
       }
     });
   }
@@ -930,6 +1067,7 @@ export function installMemberDashboardTools() {
   R['Statements and tax'] = renderStatements;
   R.Rewards = renderRewards;
   R['Help center'] = renderHelp;
+  R['Security and verification'] = renderSecurity;
 
   if (!Array.isArray(ST.watchlist)) ST.watchlist = [];
   if (!Array.isArray(ST.priceAlerts)) ST.priceAlerts = [];
