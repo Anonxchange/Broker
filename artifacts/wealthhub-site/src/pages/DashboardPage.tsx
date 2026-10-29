@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import harborDashboardHtml from '@assets/Harbor_–_Investing_(1)_1792836967110.html?raw';
 import {
   serializeInlineScript,
@@ -972,11 +972,11 @@ function buildDashboardDocument(
     )
     .replace(
       '</head>',
-      `<script>window.__AUVRENTHIA_DASHBOARD_STATE__=${serializeInlineScript(initialState)};window.__AUVRENTHIA_DEPOSIT_METHODS__=${serializeInlineScript(depositMethods)};window.__AUVRENTHIA_PROFILE__=${serializeInlineScript(profile)};</script><style>${wealthHubTypography}</style></head>`,
+      `<script>window.__AUVRENTHIA_DASHBOARD_STATE__=${serializeInlineScript(initialState)};window.__AUVRENTHIA_DEPOSIT_METHODS__=${serializeInlineScript(depositMethods)};window.__AUVRENTHIA_PROFILE__=${serializeInlineScript(profile)};</script><script>${marketRequestBridge}</script><style>${wealthHubTypography}</style></head>`,
     )
     .replace(
       '</body>',
-      `<script>${marketRequestBridge}try{${profileMenuControl}}catch(error){console.error("Profile menu initialization failed.",error);}try{${headerLogoControl}}catch(error){console.error("Dashboard header initialization failed.",error);}try{(${installMemberDepositMethods.toString()})();}catch(error){console.error("Dashboard action initialization failed.",error);}try{(${installMemberDashboardTools.toString()})();}catch(error){console.error("Dashboard navigation initialization failed.",error);}</script></body>`,
+      `<script>try{${profileMenuControl}}catch(error){console.error("Profile menu initialization failed.",error);}try{${headerLogoControl}}catch(error){console.error("Dashboard header initialization failed.",error);}try{(${installMemberDepositMethods.toString()})();}catch(error){console.error("Dashboard action initialization failed.",error);}try{(${installMemberDashboardTools.toString()})();}catch(error){console.error("Dashboard navigation initialization failed.",error);}</script></body>`,
     );
 
   const darkMode = document.documentElement.classList.contains('dark');
@@ -1130,10 +1130,11 @@ export default function DashboardPage({
     };
   }, [profile.demo_balance, userId]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     function handleMessage(event: MessageEvent) {
       if (
-        event.source !== frameRef.current?.contentWindow
+        event.source !== frameRef.current?.contentWindow ||
+        event.origin !== window.location.origin
       ) {
         return;
       }
@@ -1144,7 +1145,6 @@ export default function DashboardPage({
         event.data.payload &&
         typeof event.data.payload === 'object'
       ) {
-        const client = supabase;
         const requestId = event.data.requestId as string;
         const respond = (ok: boolean, data?: unknown, error?: string) => {
           frameRef.current?.contentWindow?.postMessage(
@@ -1158,6 +1158,8 @@ export default function DashboardPage({
             window.location.origin,
           );
         };
+
+        const client = supabase;
         if (!client) {
           respond(
             false,
