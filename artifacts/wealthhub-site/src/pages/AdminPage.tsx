@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import adminHtml from '@assets/admin_1793083123310.html?raw';
 import { useAuth } from '../lib/auth-context';
 import {
@@ -446,6 +446,11 @@ function buildAdminDocument(bootstrap: AdminBootstrap) {
       'color-mix(in srgb,var(--brand) 22%,transparent)',
     );
 
+  html = html.replace(
+    /<div id="login" hidden>[\s\S]*?(?=<div class="app" id="app" hidden>)/,
+    '',
+  );
+
   html = replaceRequired(
     html,
     'const ROLES={Owner:["*"],Finance:["money"],Support:["kyc","support","announce"]},can=',
@@ -572,7 +577,11 @@ function buildAdminDocument(bootstrap: AdminBootstrap) {
     );
 }
 
-export default function AdminPage() {
+export default function AdminPage({
+  onLogout,
+}: {
+  onLogout: () => Promise<void>;
+}) {
   const { user, profile, refreshProfile } = useAuth();
   const frameRef = useRef<HTMLIFrameElement>(null);
   const profilesRef = useRef<AppProfile[]>([]);
@@ -583,6 +592,28 @@ export default function AdminPage() {
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const [bootstrap, setBootstrap] = useState<AdminBootstrap | null>(null);
   const [pageError, setPageError] = useState('');
+
+  const handleFrameLoad = useCallback(() => {
+    const frameDocument = frameRef.current?.contentDocument;
+    if (!frameDocument) return;
+
+    const interceptLogout = (event: MouseEvent) => {
+      const target = event.target as Element | null;
+      if (
+        !target ||
+        typeof target.closest !== 'function' ||
+        !target.closest('[data-a="logout"]')
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      void onLogout();
+    };
+
+    frameDocument.addEventListener('click', interceptLogout, true);
+  }, [onLogout]);
 
   useEffect(() => {
     let active = true;
@@ -1287,6 +1318,7 @@ export default function AdminPage() {
         className="admin-page-frame"
         title="Auvrenthia Markets admin console"
         srcDoc={sourceDocument}
+        onLoad={handleFrameLoad}
       />
     </main>
   );
