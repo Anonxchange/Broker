@@ -876,15 +876,10 @@ function buildDashboardDocument(
   let html = harborDashboardHtml
     .replace('<title>Harbor – Investing</title>', '<title>Auvrenthia Markets</title>')
     .replaceAll('Sample only', 'Varies by network')
-    .replaceAll('Not in this prototype yet', 'Feature unavailable')
     .replaceAll('Verification · Tier 2 of 3', 'Identity verification')
     .replaceAll(
       'Tier 1 email and Tier 2 face checks are complete in this sample. Tier 3 requires a government ID showing your current address.',
       'Contact support to confirm your identity verification requirements.',
-    )
-    .replaceAll(
-      'This screen hasn’t been designed yet. Portfolio, the market pages and Investment plans are the working ones.',
-      'This feature is currently unavailable. Please contact support for assistance.',
     )
     .replaceAll(
       'Rates are illustrative estimates, not guarantees. All plans here are samples.',
