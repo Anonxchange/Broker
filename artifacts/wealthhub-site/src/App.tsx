@@ -1735,7 +1735,7 @@ function AppContent() {
         </main>
       );
     }
-    return <AdminPage />;
+    return <AdminPage onLogout={handleLogout} />;
   }
   if (location === '/dashboard' || location === '/dashboard/profile') {
     if (authLoading) {
