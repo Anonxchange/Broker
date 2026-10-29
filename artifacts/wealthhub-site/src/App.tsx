@@ -995,7 +995,7 @@ function renderInvestorTestimonials(pageDocument: Document) {
 
     const portrait = pageDocument.createElement('img');
     portrait.className = 'investor-testimonial__portrait';
-    portrait.src = `/site/${testimonial.portrait}`;
+    portrait.src = `/wealthhub/${testimonial.portrait}`;
     portrait.alt = `Portrait of ${testimonial.author}`;
     portrait.loading = 'lazy';
     portrait.decoding = 'async';
@@ -1232,13 +1232,9 @@ function renderInvestmentPlans(pageDocument: Document) {
     '.header-wrap .main-button',
   );
 
-  if (
-    !pricingSection ||
-    !cardsContainer ||
-    !exploreMarketsButton?.textContent?.includes('Explore Markets')
-  ) {
+  if (!pricingSection || !cardsContainer) {
     throw new Error(
-      'The pricing section or its Explore Markets button was not found.',
+      'The pricing section or its investment plan container was not found.',
     );
   }
 
@@ -1344,7 +1340,7 @@ function renderInvestmentPlans(pageDocument: Document) {
     'Product availability and terms vary. Review product information before investing.';
   cardsContainer.after(disclaimer);
 
-  if (!pricingSection.contains(exploreMarketsButton)) {
+  if (exploreMarketsButton && !pricingSection.contains(exploreMarketsButton)) {
     throw new Error(
       'The Explore Markets button must remain in the pricing section.',
     );
@@ -1352,7 +1348,10 @@ function renderInvestmentPlans(pageDocument: Document) {
 }
 
 function preparePage(source: string) {
-  const pageDocument = new DOMParser().parseFromString(source, 'text/html');
+  const pageDocument = new DOMParser().parseFromString(
+    source.replaceAll('auvrenthiamarketsmarket-ts', 'wealthhub-ts'),
+    'text/html',
+  );
   pageDocument
     .querySelectorAll('link[rel~="preconnect"]')
     .forEach((link) => link.remove());
@@ -1381,7 +1380,7 @@ function preparePage(source: string) {
     ?.style.removeProperty('transform');
 
   const base = pageDocument.createElement('base');
-  base.href = '/site/';
+  base.href = '/wealthhub/';
   pageDocument.head.prepend(base);
 
   const logo = pageDocument.querySelector('.logo-link svg');
@@ -1672,8 +1671,16 @@ function AppContent() {
     if (location !== '/') return;
     let mounted = true;
 
-    void import('./assets/landing-page.html?raw')
-      .then(({ default: source }) => {
+    void fetch(`${import.meta.env.BASE_URL}wealthhub/index.html`)
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(
+            `Homepage source returned HTTP ${response.status}.`,
+          );
+        }
+        return response.text();
+      })
+      .then((source) => {
         if (mounted) setPageHtml(preparePage(source));
       })
       .catch((error: unknown) => {
