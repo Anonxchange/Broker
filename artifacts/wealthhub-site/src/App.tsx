@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { Router as WouterRouter, useLocation } from 'wouter';
-import AuthPage, { type AuthFormValues } from './pages/AuthPage';
-import AdminPage from './pages/AdminPage';
-import DashboardPage from './pages/DashboardPage';
+import type { AuthFormValues } from './pages/AuthPage';
 import { SessionLoading } from './components/session-loading';
 import { AuthProvider, useAuth } from './lib/auth-context';
 import { isStaffRole } from './lib/supabase';
+
+const AdminPage = lazy(() => import('./pages/AdminPage'));
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const AuthPage = lazy(() => import('./pages/AuthPage'));
 
 const heroBackgrounds = `
   .section-header {
@@ -993,7 +995,7 @@ function renderInvestorTestimonials(pageDocument: Document) {
 
     const portrait = pageDocument.createElement('img');
     portrait.className = 'investor-testimonial__portrait';
-    portrait.src = `/wealthhub/${testimonial.portrait}`;
+    portrait.src = `/site/${testimonial.portrait}`;
     portrait.alt = `Portrait of ${testimonial.author}`;
     portrait.loading = 'lazy';
     portrait.decoding = 'async';
@@ -1352,6 +1354,22 @@ function renderInvestmentPlans(pageDocument: Document) {
 function preparePage(source: string) {
   const pageDocument = new DOMParser().parseFromString(source, 'text/html');
   pageDocument
+    .querySelectorAll('link[rel~="preconnect"]')
+    .forEach((link) => link.remove());
+  pageDocument
+    .querySelectorAll('link[rel~="canonical"], meta[property="og:url"]')
+    .forEach((element) => element.remove());
+  pageDocument.querySelectorAll<HTMLAnchorElement>('a[href]').forEach((link) => {
+    try {
+      const destination = new URL(link.getAttribute('href') || '', pageDocument.baseURI);
+      if (/wealth.?hub/i.test(`${destination.hostname}${destination.pathname}`)) {
+        link.setAttribute('href', '#');
+      }
+    } catch {
+      // Leave malformed or local destinations unchanged.
+    }
+  });
+  pageDocument
     .querySelectorAll('script[src*="splide"], link[href*="splide"]')
     .forEach((asset) => asset.remove());
   const logoSliderScript = Array.from(pageDocument.scripts).find((script) =>
@@ -1363,7 +1381,7 @@ function preparePage(source: string) {
     ?.style.removeProperty('transform');
 
   const base = pageDocument.createElement('base');
-  base.href = '/wealthhub/';
+  base.href = '/site/';
   pageDocument.head.prepend(base);
 
   const logo = pageDocument.querySelector('.logo-link svg');
@@ -1578,12 +1596,16 @@ function preparePage(source: string) {
       >;
       schema.name = pageTitle;
       schema.description = pageDescription;
+      delete schema.url;
+      delete schema.sameAs;
       const organization = schema.about as Record<string, unknown> | undefined;
       if (organization) {
         organization.name = 'Auvrenthia Markets';
         organization.description =
           'A multi-asset investment platform covering crypto, forex, agriculture, real estate, stocks, commodities, and more.';
         delete organization.offers;
+        delete organization.url;
+        delete organization.sameAs;
       }
       structuredData.textContent = JSON.stringify(schema);
     } catch {
@@ -1650,14 +1672,8 @@ function AppContent() {
     if (location !== '/') return;
     let mounted = true;
 
-    fetch('/wealthhub/index.html')
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error(`Could not load the homepage (${response.status}).`);
-        }
-        return response.text();
-      })
-      .then((source) => {
+    void import('./assets/landing-page.html?raw')
+      .then(({ default: source }) => {
         if (mounted) setPageHtml(preparePage(source));
       })
       .catch((error: unknown) => {
@@ -1675,12 +1691,14 @@ function AppContent() {
 
   if (location === '/login' || location === '/signup') {
     return (
-      <AuthPage
-        mode={authMode}
-        configured={configured}
-        onSubmit={submitAuth}
-        onGoogleSignIn={signInWithGoogle}
-      />
+      <Suspense fallback={<SessionLoading />}>
+        <AuthPage
+          mode={authMode}
+          configured={configured}
+          onSubmit={submitAuth}
+          onGoogleSignIn={signInWithGoogle}
+        />
+      </Suspense>
     );
   }
   if (
@@ -1693,13 +1711,15 @@ function AppContent() {
     }
     if (!session) {
       return (
-        <AuthPage
-          mode="login"
-          audience="admin"
-          configured={configured}
-          onSubmit={submitAuth}
-          onGoogleSignIn={signInWithGoogle}
-        />
+        <Suspense fallback={<SessionLoading />}>
+          <AuthPage
+            mode="login"
+            audience="admin"
+            configured={configured}
+            onSubmit={submitAuth}
+            onGoogleSignIn={signInWithGoogle}
+          />
+        </Suspense>
       );
     }
     if (profileError || !profile) {
@@ -1735,7 +1755,11 @@ function AppContent() {
         </main>
       );
     }
-    return <AdminPage onLogout={handleLogout} />;
+    return (
+      <Suspense fallback={<SessionLoading />}>
+        <AdminPage onLogout={handleLogout} />
+      </Suspense>
+    );
   }
   if (location === '/dashboard' || location === '/dashboard/profile') {
     if (authLoading) {
@@ -1743,12 +1767,14 @@ function AppContent() {
     }
     if (!session) {
       return (
-        <AuthPage
-          mode="login"
-          configured={configured}
-          onSubmit={submitAuth}
-          onGoogleSignIn={signInWithGoogle}
-        />
+        <Suspense fallback={<SessionLoading />}>
+          <AuthPage
+            mode="login"
+            configured={configured}
+            onSubmit={submitAuth}
+            onGoogleSignIn={signInWithGoogle}
+          />
+        </Suspense>
       );
     }
     if (profileError || !profile) {
@@ -1778,11 +1804,13 @@ function AppContent() {
       );
     }
     return (
-      <DashboardPage
-        onLogout={handleLogout}
-        profile={profile}
-        userId={session.user.id}
-      />
+      <Suspense fallback={<SessionLoading />}>
+        <DashboardPage
+          onLogout={handleLogout}
+          profile={profile}
+          userId={session.user.id}
+        />
+      </Suspense>
     );
   }
 
