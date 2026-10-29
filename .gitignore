@@ -13,6 +13,8 @@ out-tsc
 .nuxt
 .output
 .vercel
+.env*
+!.env.example
 
 # dependencies
 node_modules
