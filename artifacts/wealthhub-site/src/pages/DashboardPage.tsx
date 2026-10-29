@@ -767,7 +767,7 @@ function buildDashboardDocument(
         }
         setProfileMenuOpen(false);
         if(action.dataset.profileAction==="signout"){
-          window.parent.postMessage({type:"auvrenthia-member-logout"},window.location.origin);
+          window.parent.postMessage({type:"auvrenthia-member-logout"},"*");
           return;
         }
         const destinations={settings:"Security and verification",statements:"Statements and tax",rewards:"Rewards"};
@@ -968,7 +968,7 @@ function buildDashboardDocument(
     )
     .replace(
       'window.parent.postMessage({type:"auvrenthia-member-logout"},"*");',
-      'window.parent.postMessage({type:"auvrenthia-member-logout"},window.location.origin);',
+      'window.parent.postMessage({type:"auvrenthia-member-logout"},"*");',
     )
     .replace(
       '</head>',
@@ -993,6 +993,10 @@ export default function DashboardPage({
   userId,
 }: DashboardPageProps) {
   const frameRef = useRef<HTMLIFrameElement>(null);
+  const frameDocumentRef = useRef<Document | null>(null);
+  const frameLogoutHandlerRef = useRef<((event: MouseEvent) => void) | null>(
+    null,
+  );
   const [ready, setReady] = useState(false);
   const [dashboardState, setDashboardState] =
     useState<MemberDashboardState>(EMPTY_DASHBOARD_STATE);
@@ -1003,6 +1007,36 @@ export default function DashboardPage({
     () => buildDashboardDocument(dashboardState, depositMethods, profile),
     [dashboardState, depositMethods, profile],
   );
+  const handleFrameLoad = () => {
+    const frameDocument = frameRef.current?.contentDocument;
+    if (!frameDocument) return;
+
+    if (frameDocumentRef.current && frameLogoutHandlerRef.current) {
+      frameDocumentRef.current.removeEventListener(
+        'click',
+        frameLogoutHandlerRef.current,
+        true,
+      );
+    }
+
+    const interceptLogout = (event: MouseEvent) => {
+      const target = event.target as Element | null;
+      if (!target || typeof target.closest !== 'function') return;
+      if (
+        !target.closest('[data-profile-action="signout"], [data-a="logout"]')
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      void onLogout();
+    };
+
+    frameDocument.addEventListener('click', interceptLogout, true);
+    frameDocumentRef.current = frameDocument;
+    frameLogoutHandlerRef.current = interceptLogout;
+  };
 
   useEffect(() => {
     let active = true;
@@ -1099,8 +1133,7 @@ export default function DashboardPage({
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
       if (
-        event.source !== frameRef.current?.contentWindow ||
-        event.origin !== window.location.origin
+        event.source !== frameRef.current?.contentWindow
       ) {
         return;
       }
@@ -1155,8 +1188,6 @@ export default function DashboardPage({
                 : 'Market data is temporarily unavailable.',
             );
           });
-      } else if (event.data?.type === 'auvrenthia-member-logout') {
-        void onLogout();
       } else if (
         event.data?.type === 'auvrenthia-member-deposit-submit'
       ) {
@@ -1356,6 +1387,7 @@ export default function DashboardPage({
         className="member-dashboard-frame"
         title="Auvrenthia Markets member dashboard"
         srcDoc={sourceDocument}
+        onLoad={handleFrameLoad}
       />
     </main>
   );
