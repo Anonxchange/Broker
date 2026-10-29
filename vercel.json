@@ -5,7 +5,7 @@
   "outputDirectory": "artifacts/wealthhub-site/dist/public",
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/((?!assets/|.*\\..*).*)",
       "destination": "/index.html"
     }
   ]
