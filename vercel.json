@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "installCommand": "pnpm install --frozen-lockfile",
+  "buildCommand": "PORT=3000 BASE_PATH=/ pnpm run build",
+  "outputDirectory": "dist/public",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}
