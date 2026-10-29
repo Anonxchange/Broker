@@ -1,5 +1,6 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'wouter';
+import { Toaster, toast } from 'sonner';
 import './auth-page.theme.css';
 
 type AuthPageProps = {
@@ -81,18 +82,28 @@ export default function AuthPage({
   onSubmit,
   onGoogleSignIn,
 }: AuthPageProps) {
-  const [notice, setNotice] = useState('');
   const [pending, setPending] = useState(false);
-  const isSignup = mode === 'signup';
+  const isAdminLogin = audience === 'admin';
+  const isSignup = mode === 'signup' && !isAdminLogin;
+
+  useEffect(() => {
+    if (!configured) {
+      toast.error(
+        'Supabase is not configured. Add the project URL and publishable key to enable sign-in.',
+        { id: 'auth-supabase-config', duration: Infinity },
+      );
+    } else {
+      toast.dismiss('auth-supabase-config');
+    }
+  }, [configured]);
 
   async function handleGoogleSignIn() {
-    setNotice('');
     if (!configured) return;
     setPending(true);
     try {
       await onGoogleSignIn();
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Google sign-in failed.');
+      toast.error(error instanceof Error ? error.message : 'Google sign-in failed.');
     } finally {
       setPending(false);
     }
@@ -105,7 +116,6 @@ export default function AuthPage({
     if (!configured) return;
 
     const values = Object.fromEntries(new FormData(form).entries());
-    setNotice('');
     setPending(true);
     try {
       const response = await onSubmit({
@@ -118,12 +128,16 @@ export default function AuthPage({
         password: String(values.password || ''),
       });
       if (response) {
-        setNotice(response);
+        toast.success(response);
       } else if (isSignup) {
-        setNotice('Account created. Check your email if confirmation is required.');
+        toast.success(
+          'Account created. Check your email if confirmation is required.',
+        );
       }
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Authentication failed.');
+      toast.error(
+        error instanceof Error ? error.message : 'Authentication failed.',
+      );
     } finally {
       setPending(false);
     }
@@ -131,6 +145,13 @@ export default function AuthPage({
 
   return (
     <main className="auth-shell">
+      <Toaster
+        position="top-center"
+        theme="light"
+        richColors
+        closeButton
+        duration={5000}
+      />
       <section className={`auth-card${isSignup ? ' auth-card--signup' : ''}`} aria-labelledby="auth-heading">
         <BrandMark />
         <div className="auth-form-wrap">
@@ -152,20 +173,24 @@ export default function AuthPage({
             </p>
           </div>
 
-          <button
-            className="auth-google"
-            type="button"
-            onClick={handleGoogleSignIn}
-            disabled={!configured || pending}
-            data-testid="button-google-auth"
-          >
-            <GoogleMark />
-            <span>Continue with Google</span>
-          </button>
+          {!isAdminLogin && (
+            <>
+              <button
+                className="auth-google"
+                type="button"
+                onClick={handleGoogleSignIn}
+                disabled={!configured || pending}
+                data-testid="button-google-auth"
+              >
+                <GoogleMark />
+                <span>Continue with Google</span>
+              </button>
 
-          <div className="auth-divider" aria-hidden="true">
-            <span>or continue with email</span>
-          </div>
+              <div className="auth-divider" aria-hidden="true">
+                <span>or continue with email</span>
+              </div>
+            </>
+          )}
 
           <form className="auth-form" onSubmit={handleSubmit} noValidate aria-busy={pending}>
             {isSignup && (
@@ -181,7 +206,13 @@ export default function AuthPage({
                 </div>
               </>
             )}
-            <FormField label="Email address" name="email" type="email" autoComplete="email" placeholder="name@example.com" />
+            <FormField
+              label={isAdminLogin ? 'Admin email address' : 'Email address'}
+              name="email"
+              type="email"
+              autoComplete="email"
+              placeholder={isAdminLogin ? 'admin@example.com' : 'name@example.com'}
+            />
             <FormField
               label="Password"
               name="password"
@@ -193,7 +224,9 @@ export default function AuthPage({
             <p className="auth-privacy-note">
               {isSignup
                 ? 'Your account is created with Supabase. Financial actions in this preview do not move real funds.'
-                : 'Sign in securely with your Supabase account. Financial actions in this preview do not move real funds.'}
+                : isAdminLogin
+                  ? 'Only approved admin and staff accounts can access this console.'
+                  : 'Sign in securely with your Supabase account. Financial actions in this preview do not move real funds.'}
             </p>
             <button
               className="auth-submit"
@@ -206,26 +239,14 @@ export default function AuthPage({
             </button>
           </form>
 
-          {!configured && (
-            <p className="auth-status" role="status" aria-live="polite">
-              <span className="auth-status-dot" aria-hidden="true" />
-              Add VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY to Vercel to enable sign-in.
+          {!isAdminLogin && (
+            <p className="auth-switch">
+              {isSignup ? 'Already have an account?' : 'New to Auvrenthia Markets?'}{' '}
+              <Link href={isSignup ? '/login' : '/signup'} data-testid="link-auth-switch">
+                {isSignup ? 'Sign in' : 'Create an account'}
+              </Link>
             </p>
           )}
-
-          {notice && (
-            <p className="auth-status" role="status" aria-live="polite" data-testid="status-auth-notice">
-              <span className="auth-status-dot" aria-hidden="true" />
-              {notice}
-            </p>
-          )}
-
-          <p className="auth-switch">
-            {isSignup ? 'Already have an account?' : 'New to Auvrenthia Markets?'}{' '}
-            <Link href={isSignup ? '/login' : '/signup'} data-testid="link-auth-switch">
-              {isSignup ? 'Sign in' : 'Create an account'}
-            </Link>
-          </p>
           <Link href="/" className="auth-back-link" data-testid="link-back-home">Back to home</Link>
         </div>
       </section>
