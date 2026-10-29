@@ -7,11 +7,12 @@ import {
   supabaseImageBucket,
   type AppProfile,
 } from '../lib/supabase';
+import { SessionLoading } from '@/components/session-loading';
 import { installMemberDashboardTools } from './member-dashboard-tools';
 import './dashboard-page.css';
 
 type DashboardPageProps = {
-  onLogout: () => void;
+  onLogout: () => Promise<void>;
   profile: AppProfile;
   userId: string;
 };
@@ -1155,27 +1156,7 @@ export default function DashboardPage({
             );
           });
       } else if (event.data?.type === 'auvrenthia-member-logout') {
-        // DEBUG-LOGOUT-START (temporary, remove later)
-        alert('DEBUG: logout message received');
-        void (async () => {
-          try {
-            if (supabase) {
-              const { error } = await supabase.auth.signOut({ scope: 'local' });
-              if (error) alert('DEBUG: signOut error: ' + error.message);
-            } else {
-              alert('DEBUG: supabase client is not configured');
-            }
-          } catch (signOutError) {
-            alert('DEBUG: signOut crashed: ' + String(signOutError));
-          }
-          try {
-            onLogout();
-          } catch (logoutError) {
-            alert('DEBUG: onLogout crashed: ' + String(logoutError));
-          }
-          window.location.reload();
-        })();
-        // DEBUG-LOGOUT-END
+        void onLogout();
       } else if (
         event.data?.type === 'auvrenthia-member-deposit-submit'
       ) {
@@ -1365,11 +1346,7 @@ export default function DashboardPage({
     );
   }
   if (!ready) {
-    return (
-      <main className="member-dashboard-source">
-        <p role="status" className="dashboard-data-loading">Loading your account…</p>
-      </main>
-    );
+    return <SessionLoading />;
   }
   return (
     <main className="member-dashboard-source">
