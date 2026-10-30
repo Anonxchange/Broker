@@ -189,7 +189,7 @@ function installAdminManagement() {
     if (!value?.trim()) return "";
     try {
       const url = new URL(value, document.baseURI);
-      const sameOrigin = url.origin === window.location.origin;
+      const sameOrigin = url.origin === window.__AUVHOST__;
       const supabaseStorage =
         url.protocol === "https:" && url.hostname.endsWith(".supabase.co");
       if (!sameOrigin && !supabaseStorage) {
@@ -221,7 +221,7 @@ function installAdminManagement() {
         type: "auvrenthia-admin-deposit-methods-update",
         methods,
       },
-      window.location.origin,
+      window.__AUVHOST__,
     );
   }
   let depositMethodsLoaded = false;
@@ -1048,4 +1048,3 @@ function installAdminManagement() {
 }
 
 export const adminManagementBehavior = `(${installAdminManagement.toString()})();`;
-
