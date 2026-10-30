@@ -1653,6 +1653,567 @@ export function installMemberDashboardTools() {
     })();
   };
 
+  // ---- Lending ------------------------------------------------------------
+  // Frontend only until LENDING_CONNECTED is true. Rates, fees and the total
+  // repayable amount are never shown here because they are set per application
+  // by your lending team. Once the backend exists:
+  //   1. fill lendingApplications from the database (shape: LendingApplication),
+  //   2. implement sendLendingRequest (post to the parent page, insert a row for
+  //      the signed-in user, resolve when saved, throw on error),
+  //   3. set LENDING_CONNECTED to true.
+  // Approval status must come from the server, never from member-editable state.
+  const LENDING_CONNECTED = false;
+
+  type LendingStatus = 'submitted' | 'in_review' | 'approved' | 'declined' | 'withdrawn';
+  type LendingApplication = {
+    id: string;
+    amount: number;
+    termMonths: number;
+    purpose: string;
+    status: LendingStatus;
+    createdAt: number;
+    decisionNote?: string;
+  };
+  type LendingRequestInput = {
+    amount: number;
+    termMonths: number;
+    purpose: string;
+    notes: string;
+  };
+
+  // Set these to the limits your lending team has approved.
+  const LENDING_LIMITS = { min: 500, max: 250000 };
+  const LENDING_TERMS = [3, 6, 12, 24, 36];
+  const LENDING_PURPOSES = [
+    'Working capital',
+    'Business expansion',
+    'Personal expenses',
+    'Education',
+    'Property',
+    'Other',
+  ];
+
+  // Filled from the database later. Shape: LendingApplication.
+  const lendingApplications: LendingApplication[] = [];
+
+  const lendingStatus: Record<LendingStatus, [string, string]> = {
+    submitted: ['Submitted', 'r2'],
+    in_review: ['In review', 'r2'],
+    approved: ['Approved', 'r1'],
+    declined: ['Declined', 'r3'],
+    withdrawn: ['Withdrawn', 'security-badge-muted'],
+  };
+
+  const memberKycStatus = () => {
+    const profile = (window as unknown as { __AUVRENTHIA_PROFILE__?: { kyc_status?: unknown } })
+      .__AUVRENTHIA_PROFILE__;
+    return String(profile?.kyc_status ?? 'none');
+  };
+
+  const lendingEligibility = (): { ok: boolean; label: string; tone: string; detail: string } => {
+    switch (memberKycStatus()) {
+      case 'verified':
+        return {
+          ok: true,
+          label: 'Eligible to apply',
+          tone: 'r1',
+          detail: 'Your identity verification is complete.',
+        };
+      case 'pending':
+        return {
+          ok: false,
+          label: 'Verification in review',
+          tone: 'r2',
+          detail: 'You can apply once your identity verification has been approved.',
+        };
+      case 'rejected':
+        return {
+          ok: false,
+          label: 'Action required',
+          tone: 'r3',
+          detail: 'Your identity verification needs attention before you can apply.',
+        };
+      default:
+        return {
+          ok: false,
+          label: 'Verification required',
+          tone: 'security-badge-muted',
+          detail: 'Complete identity verification before you can apply for lending.',
+        };
+    }
+  };
+
+  const formatMoney = (amount: number) => {
+    try {
+      return fmt(amount);
+    } catch {
+      return `$${amount.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+    }
+  };
+
+  const lendingRowsMarkup = () =>
+    lendingApplications.length
+      ? lendingApplications
+          .map((application) => {
+            const [label, tone] = lendingStatus[application.status] || lendingStatus.submitted;
+            const note = application.decisionNote
+              ? `<small>${escapeHtml(application.decisionNote)}</small>`
+              : '';
+            return `<div class="lending-row"><div class="lending-row-main"><b>${escapeHtml(formatMoney(application.amount))} · ${escapeHtml(application.termMonths)} months</b><small>${escapeHtml(application.id)} · ${escapeHtml(application.purpose)} · ${escapeHtml(new Date(application.createdAt).toLocaleDateString())}</small>${note}</div><span class="risk ${tone}">${label}</span></div>`;
+          })
+          .join('')
+      : '<div class="help-empty"><b>No applications yet</b><p>Applications you submit will appear here with their current status.</p></div>';
+
+  const renderLending = () => {
+    const eligibility = lendingEligibility();
+    const openCount = lendingApplications.filter(
+      (application) => application.status === 'submitted' || application.status === 'in_review',
+    ).length;
+    const approvedCount = lendingApplications.filter(
+      (application) => application.status === 'approved',
+    ).length;
+    const canApply = LENDING_CONNECTED && eligibility.ok;
+
+    let banner = '';
+    if (!LENDING_CONNECTED) {
+      banner =
+        '<div class="lending-banner" role="status"><b>Applications are not open yet</b><p>Lending is not available on your account at the moment. You can review how it works below.</p></div>';
+    } else if (!eligibility.ok) {
+      banner = `<div class="lending-banner" role="status"><b>${escapeHtml(eligibility.label)}</b><p>${escapeHtml(eligibility.detail)}</p><button class="btn alt" type="button" data-tool-action="navigate" data-destination="Security and verification">Open verification</button></div>`;
+    }
+
+    const termOptions = LENDING_TERMS.map(
+      (months) => `<option value="${months}"${months === 12 ? ' selected' : ''}>${months} months</option>`,
+    ).join('');
+    const purposeOptions = LENDING_PURPOSES.map(
+      (purpose) => `<option value="${escapeHtml(purpose)}">${escapeHtml(purpose)}</option>`,
+    ).join('');
+    const disabled = canApply ? '' : ' disabled aria-disabled="true"';
+
+    root.innerHTML = `<div class="head"><div><div class="lbl">Borrowing</div><div class="bal">Lending</div></div><span class="risk ${eligibility.tone}">${escapeHtml(eligibility.label)}</span></div>
+      <p class="note">Apply for a lending facility and track each application from submission to decision. The rate, fees and total repayable amount are confirmed in writing before you accept any offer.</p>
+      ${banner}
+
+      <div class="lending-stats">
+        <div class="lending-stat"><small>Open applications</small><b>${openCount}</b></div>
+        <div class="lending-stat"><small>Approved facilities</small><b>${approvedCount}</b></div>
+        <div class="lending-stat"><small>Requested amount</small><b>${escapeHtml(formatMoney(LENDING_LIMITS.min))} – ${escapeHtml(formatMoney(LENDING_LIMITS.max))}</b></div>
+      </div>
+
+      <h2 class="sec">Request a facility</h2>
+      <div class="mp" id="lending-form-card">
+        <div class="mph"><div><h3>Application details</h3><small>Tell us how much you would like to borrow and for how long.</small></div></div>
+        <fieldset class="lending-fieldset"${disabled}>
+          <div class="help-grid">
+            <div><label class="fl" for="lending-amount">Amount (USD)</label><input class="help-input" id="lending-amount" type="number" inputmode="decimal" min="${LENDING_LIMITS.min}" max="${LENDING_LIMITS.max}" step="0.01" placeholder="${LENDING_LIMITS.min}"></div>
+            <div><label class="fl" for="lending-term">Term</label><select class="sel" id="lending-term">${termOptions}</select></div>
+            <div><label class="fl" for="lending-purpose">Purpose</label><select class="sel" id="lending-purpose">${purposeOptions}</select></div>
+          </div>
+          <label class="fl" for="lending-notes">Additional information <span class="help-optional">(optional)</span></label>
+          <textarea class="help-input help-textarea" id="lending-notes" rows="4" maxlength="1000" placeholder="Anything that will help us assess your application."></textarea>
+          <label class="lending-ack" for="lending-ack"><input type="checkbox" id="lending-ack"><span>I understand that submitting an application does not guarantee approval, and that I will receive the full terms to review before I accept.</span></label>
+        </fieldset>
+        <div class="err" id="lending-error" role="alert"></div>
+        <div class="help-success" id="lending-success" role="status" hidden></div>
+        <div class="deposit-actions"><button class="btn" type="button" data-tool-action="submit-lending"${disabled}>Submit application</button></div>
+      </div>
+
+      <h2 class="sec">Your applications</h2>
+      <div class="mp" id="lending-list">${lendingRowsMarkup()}</div>
+
+      <h2 class="sec">How lending works</h2>
+      <ol class="lending-steps">
+        <li><b>Verify your identity</b><span>Lending is available to members with completed identity verification.</span></li>
+        <li><b>Submit an application</b><span>Choose an amount, term and purpose. Our team reviews every application individually.</span></li>
+        <li><b>Review your offer</b><span>If approved, you will see the rate, fees, repayment schedule and total repayable amount before you decide.</span></li>
+        <li><b>Accept and manage repayments</b><span>Funds are released only after you accept. Repayments and balances are shown here once a facility is active.</span></li>
+      </ol>
+
+      <h2 class="sec">Important information</h2>
+      <ul class="lending-notes">
+        <li>Borrowing involves risk. You are responsible for repaying the full amount, including any interest and fees.</li>
+        <li>Late or missed repayments can result in additional charges and may affect your account and future access to lending.</li>
+        <li>Lending is subject to eligibility and approval, and may not be available in all regions.</li>
+        <li>Do not borrow money you cannot afford to repay. Do not use borrowed funds for speculation you cannot afford to lose.</li>
+      </ul>`;
+  };
+
+  const submitLendingRequest = async (button: HTMLElement) => {
+    const field = (id: string) =>
+      root.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`#${id}`);
+    const errorBox = root.querySelector<HTMLElement>('#lending-error');
+    const successBox = root.querySelector<HTMLElement>('#lending-success');
+    const fail = (message: string) => {
+      if (successBox) successBox.hidden = true;
+      if (errorBox) errorBox.textContent = message;
+    };
+    if (errorBox) errorBox.textContent = '';
+    if (successBox) successBox.hidden = true;
+
+    if (!lendingEligibility().ok) {
+      fail('Complete identity verification before you apply for lending.');
+      return;
+    }
+    const amount = Number((field('lending-amount')?.value || '').trim());
+    const termMonths = Number(field('lending-term')?.value);
+    const purpose = (field('lending-purpose')?.value || '').trim();
+    const notes = (field('lending-notes')?.value || '').trim();
+    const acknowledged = (field('lending-ack') as HTMLInputElement | null)?.checked === true;
+
+    if (!Number.isFinite(amount) || amount < LENDING_LIMITS.min || amount > LENDING_LIMITS.max) {
+      fail(
+        `Enter an amount between ${formatMoney(LENDING_LIMITS.min)} and ${formatMoney(LENDING_LIMITS.max)}.`,
+      );
+      return;
+    }
+    if (Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-6) {
+      fail('Enter an amount with no more than two decimal places.');
+      return;
+    }
+    if (!LENDING_TERMS.includes(termMonths)) {
+      fail('Choose a term.');
+      return;
+    }
+    if (!LENDING_PURPOSES.includes(purpose)) {
+      fail('Choose a purpose.');
+      return;
+    }
+    if (notes.length > 1000) {
+      fail('Additional information must be 1,000 characters or fewer.');
+      return;
+    }
+    if (!acknowledged) {
+      fail('Please confirm that you understand the terms above before submitting.');
+      return;
+    }
+
+    button.setAttribute('disabled', 'true');
+    try {
+      await sendLendingRequest({ amount, termMonths, purpose, notes });
+      ['lending-amount', 'lending-notes'].forEach((id) => {
+        const input = field(id);
+        if (input) input.value = '';
+      });
+      const ack = field('lending-ack') as HTMLInputElement | null;
+      if (ack) ack.checked = false;
+      if (successBox) {
+        successBox.textContent =
+          'Your application was submitted. We will notify you when there is a decision.';
+        successBox.hidden = false;
+      }
+    } catch (error) {
+      fail(
+        error instanceof Error
+          ? error.message
+          : 'We could not submit your application. Please try again.',
+      );
+    } finally {
+      button.removeAttribute('disabled');
+    }
+  };
+
+  // TODO(supabase): send the application to the parent page with postMessage
+  // (same pattern as the deposit request), then insert it into a lending
+  // applications table under the signed-in user's id with status 'submitted'.
+  // Validate the limits again on the server. Resolve when saved, throw on error.
+  const sendLendingRequest = async (_request: LendingRequestInput) => {
+    if (!LENDING_CONNECTED) {
+      throw new Error(
+        'Lending applications are not open yet, so nothing was submitted. Please try again later.',
+      );
+    }
+  };
+
+  // ---- Crypto trading modes -------------------------------------------------
+  // Adds a mode strip to the Crypto page: Spot (the existing chart and order
+  // ticket), AI trading bot, Copy trading and Recurring buys. Frontend only
+  // until TRADE_MODES_CONNECTED is true. To wire a mode, implement
+  // sendTradeModeRequest (post to the parent page, save for the signed-in user,
+  // resolve when saved, throw on error), then set the flag. Add or edit a mode
+  // by changing TRADE_MODES only; the panel, form and validation are generated.
+  // Never show results, rankings or returns here unless they come from the server.
+  const TRADE_MODES_CONNECTED = false;
+
+  type TradeModeId = 'bot' | 'copy' | 'recurring';
+  type TradeField = {
+    id: string;
+    label: string;
+    type: 'select' | 'number';
+    options?: string[];
+    min?: number;
+    max?: number;
+    step?: number;
+    placeholder?: string;
+    hint?: string;
+  };
+  type TradeMode = {
+    id: TradeModeId;
+    tab: string;
+    eyebrow: string;
+    title: string;
+    blurb: string;
+    fields: TradeField[];
+    action: string;
+    notes: string[];
+    stats: string[];
+  };
+
+  // Set the limits to the ones your trading team has approved.
+  const TRADE_MODES: TradeMode[] = [
+    {
+      id: 'bot',
+      tab: 'AI trading bot',
+      eyebrow: 'Automated trading',
+      title: 'AI trading bot',
+      blurb:
+        'Choose a risk level, a budget and a loss limit. The bot only trades inside the limits you set.',
+      fields: [
+        { id: 'asset', label: 'Trading pair', type: 'select' },
+        { id: 'risk', label: 'Risk level', type: 'select', options: ['Low', 'Medium', 'High'] },
+        { id: 'amount', label: 'Amount to allocate (USD)', type: 'number', min: 50, max: 100000, step: 0.01, placeholder: '50' },
+        { id: 'stop', label: 'Stop-loss (%)', type: 'number', min: 1, max: 50, step: 0.1, placeholder: '10', hint: 'The bot stops if losses reach this level.' },
+        { id: 'target', label: 'Take-profit (%)', type: 'number', min: 1, max: 500, step: 0.1, placeholder: '20' },
+      ],
+      action: 'Start bot',
+      notes: [
+        'Automated trading carries risk. You can lose some or all of the funds you allocate.',
+        'Results are not guaranteed, and past performance does not indicate future results.',
+        'Only allocate funds you can afford to lose, and set a stop-loss you are comfortable with.',
+      ],
+      stats: ['Bot status', 'Allocated', 'Profit and loss'],
+    },
+    {
+      id: 'copy',
+      tab: 'Copy trading',
+      eyebrow: 'Follow a trader',
+      title: 'Copy trading',
+      blurb: 'Follow an approved trader and mirror their trades with a budget and loss limit you control.',
+      fields: [
+        { id: 'trader', label: 'Trader', type: 'select', options: [] },
+        { id: 'amount', label: 'Amount to allocate (USD)', type: 'number', min: 50, max: 100000, step: 0.01, placeholder: '50' },
+        { id: 'stop', label: 'Stop-loss (%)', type: 'number', min: 1, max: 50, step: 0.1, placeholder: '10' },
+      ],
+      action: 'Start copying',
+      notes: [
+        'Copied trades can lose money. A trader\u2019s past results do not guarantee future results.',
+        'Only allocate funds you can afford to lose.',
+      ],
+      stats: ['Copy status', 'Allocated', 'Profit and loss'],
+    },
+    {
+      id: 'recurring',
+      tab: 'Recurring buys',
+      eyebrow: 'Scheduled purchases',
+      title: 'Recurring buys',
+      blurb: 'Buy a fixed amount of a crypto asset on a schedule, so you do not have to time the market.',
+      fields: [
+        { id: 'asset', label: 'Asset', type: 'select' },
+        { id: 'amount', label: 'Amount per purchase (USD)', type: 'number', min: 10, max: 100000, step: 0.01, placeholder: '10' },
+        { id: 'frequency', label: 'Frequency', type: 'select', options: ['Daily', 'Weekly', 'Monthly'] },
+      ],
+      action: 'Start schedule',
+      notes: [
+        'Prices change between purchases, and the value of your holdings can fall as well as rise.',
+        'Each purchase uses your available balance.',
+      ],
+      stats: ['Schedule status', 'Total bought', 'Next purchase'],
+    },
+  ];
+
+  // TODO: connect. Send the request to the parent page with postMessage (same
+  // pattern as the deposit request), save it under the signed-in user's id,
+  // validate again on the server, then resolve. Throw an Error on failure.
+  const sendTradeModeRequest = async (
+    _mode: TradeModeId,
+    _values: Record<string, string | number>,
+  ) => {
+    if (!TRADE_MODES_CONNECTED) {
+      throw new Error('This feature is not available yet, so nothing was started.');
+    }
+  };
+
+  const installCryptoModes = () => {
+    const win = window as unknown as {
+      renderMkt?: (category: string) => void;
+      __cryptoModesInstalled?: boolean;
+    };
+    const originalRenderMkt = win.renderMkt;
+    if (typeof originalRenderMkt !== 'function' || win.__cryptoModesInstalled) return;
+    win.__cryptoModesInstalled = true;
+
+    let activeMode = 'spot';
+    const panels: Record<string, HTMLElement> = {};
+
+    const cryptoSymbols = () => {
+      const rows = (D.Crypto || []) as unknown[][];
+      const symbols = rows.map((row) => String(row[0])).filter(Boolean);
+      return symbols.length ? symbols : ['BTC', 'ETH'];
+    };
+
+    const fieldMarkup = (mode: TradeMode, field: TradeField) => {
+      const id = `tm-${mode.id}-${field.id}`;
+      const hint = field.hint ? `<div class="hint">${escapeHtml(field.hint)}</div>` : '';
+      if (field.type === 'select') {
+        const options = field.options ?? cryptoSymbols();
+        const markup = options.length
+          ? options.map((option) => `<option value="${escapeHtml(option)}">${escapeHtml(option)}</option>`).join('')
+          : '<option value="">None available yet</option>';
+        return `<div><label class="fl" for="${id}">${escapeHtml(field.label)}</label><select class="sel" id="${id}" data-field="${field.id}">${markup}</select>${hint}</div>`;
+      }
+      return `<div><label class="fl" for="${id}">${escapeHtml(field.label)}</label><input class="help-input" id="${id}" data-field="${field.id}" type="number" inputmode="decimal" min="${field.min}" max="${field.max}" step="${field.step}" placeholder="${escapeHtml(field.placeholder ?? '')}">${hint}</div>`;
+    };
+
+    const buildPanel = (mode: TradeMode) => {
+      const disabled = TRADE_MODES_CONNECTED ? '' : ' disabled aria-disabled="true"';
+      const badge = TRADE_MODES_CONNECTED
+        ? ''
+        : '<span class="risk security-badge-muted">Not available yet</span>';
+      const banner = TRADE_MODES_CONNECTED
+        ? ''
+        : `<div class="tm-banner" role="status"><b>${escapeHtml(mode.title)} is not open yet</b><p>You can review how it works below. Nothing can be started until it is enabled for your account.</p></div>`;
+      const stats = mode.stats
+        .map((label) => `<div class="tm-stat"><small>${escapeHtml(label)}</small><b>\u2014</b></div>`)
+        .join('');
+      const notes = mode.notes.map((note) => `<li>${escapeHtml(note)}</li>`).join('');
+      const panel = document.createElement('div');
+      panel.className = 'tm-panel';
+      panel.dataset.mode = mode.id;
+      panel.innerHTML = `<div class="head"><div><div class="lbl">${escapeHtml(mode.eyebrow)}</div><div class="bal tm-title">${escapeHtml(mode.title)}</div></div>${badge}</div>
+        <p class="note">${escapeHtml(mode.blurb)}</p>
+        ${banner}
+        <div class="tm-stats">${stats}</div>
+        <div class="mp">
+          <div class="mph"><div><h3>Set up</h3><small>Review each setting before you start.</small></div></div>
+          <fieldset class="tm-fieldset"${disabled}>
+            <div class="help-grid">${mode.fields.map((field) => fieldMarkup(mode, field)).join('')}</div>
+            <label class="tm-ack" for="tm-${mode.id}-ack"><input type="checkbox" id="tm-${mode.id}-ack"><span>I understand this involves risk and I may lose the funds I allocate.</span></label>
+          </fieldset>
+          <div class="err" data-role="error" role="alert"></div>
+          <div class="help-success" data-role="success" role="status" hidden></div>
+          <div class="deposit-actions"><button class="btn" type="button" data-trade-submit="${mode.id}"${disabled}>${escapeHtml(mode.action)}</button></div>
+        </div>
+        <h2 class="sec">Activity</h2>
+        <div class="mp"><div class="help-empty"><b>No activity yet</b><p>Orders and results will appear here once you start.</p></div></div>
+        <h2 class="sec">Important information</h2>
+        <ul class="tm-notes">${notes}</ul>`;
+
+      panel.addEventListener('click', (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+        const button = target.closest<HTMLButtonElement>('[data-trade-submit]');
+        if (!button) return;
+        void submitMode(mode, panel, button);
+      });
+      return panel;
+    };
+
+    const submitMode = async (mode: TradeMode, panel: HTMLElement, button: HTMLButtonElement) => {
+      const errorBox = panel.querySelector<HTMLElement>('[data-role="error"]');
+      const successBox = panel.querySelector<HTMLElement>('[data-role="success"]');
+      const fail = (message: string) => {
+        if (successBox) successBox.hidden = true;
+        if (errorBox) errorBox.textContent = message;
+      };
+      if (errorBox) errorBox.textContent = '';
+      if (successBox) successBox.hidden = true;
+
+      const values: Record<string, string | number> = {};
+      for (const field of mode.fields) {
+        const input = panel.querySelector<HTMLInputElement | HTMLSelectElement>(`[data-field="${field.id}"]`);
+        const raw = (input?.value || '').trim();
+        if (field.type === 'select') {
+          const allowed = field.options ?? cryptoSymbols();
+          if (!allowed.includes(raw)) {
+            fail(`Choose a value for \u201c${field.label}\u201d.`);
+            return;
+          }
+          values[field.id] = raw;
+        } else {
+          const number = Number(raw);
+          if (!raw || !Number.isFinite(number) || number < (field.min ?? 0) || number > (field.max ?? Infinity)) {
+            fail(`Enter a value for \u201c${field.label}\u201d between ${field.min} and ${field.max}.`);
+            return;
+          }
+          values[field.id] = number;
+        }
+      }
+      if (!panel.querySelector<HTMLInputElement>(`#tm-${mode.id}-ack`)?.checked) {
+        fail('Please confirm that you understand the risks before you start.');
+        return;
+      }
+
+      button.setAttribute('disabled', 'true');
+      try {
+        await sendTradeModeRequest(mode.id, values);
+        if (successBox) {
+          successBox.textContent = 'Your request was submitted.';
+          successBox.hidden = false;
+        }
+      } catch (error) {
+        fail(error instanceof Error ? error.message : 'We could not complete that request. Please try again.');
+      } finally {
+        button.removeAttribute('disabled');
+      }
+    };
+
+    const showMode = (id: string, rebuild: boolean) => {
+      activeMode = id;
+      const mkt = document.getElementById('mkt');
+      const spot = document.getElementById('crypto-spot');
+      const host = document.getElementById('crypto-panel');
+      if (!mkt || !spot || !host) return;
+      mkt.querySelectorAll<HTMLElement>('#crypto-modes [data-mode]').forEach((tab) => {
+        const on = tab.dataset.mode === id;
+        tab.classList.toggle('on', on);
+        tab.setAttribute('aria-selected', String(on));
+      });
+      spot.hidden = id !== 'spot';
+      host.hidden = id === 'spot';
+      host.replaceChildren();
+      const mode = TRADE_MODES.find((candidate) => candidate.id === id);
+      if (!mode) return;
+      if (rebuild || !panels[id]) panels[id] = buildPanel(mode);
+      host.append(panels[id]);
+    };
+
+    const decorate = () => {
+      const mkt = document.getElementById('mkt');
+      if (!mkt || mkt.querySelector('#crypto-modes')) return;
+      const head = mkt.querySelector(':scope > .head');
+      if (!head) return;
+      const spot = document.createElement('div');
+      spot.id = 'crypto-spot';
+      while (head.nextSibling) spot.appendChild(head.nextSibling);
+      const tabs = document.createElement('div');
+      tabs.id = 'crypto-modes';
+      tabs.className = 'tabs';
+      tabs.setAttribute('role', 'tablist');
+      tabs.setAttribute('aria-label', 'Crypto trading modes');
+      tabs.innerHTML = [{ id: 'spot', tab: 'Spot trading' }, ...TRADE_MODES]
+        .map(
+          (mode) =>
+            `<button class="tab" type="button" role="tab" data-mode="${mode.id}">${escapeHtml(mode.tab)}</button>`,
+        )
+        .join('');
+      tabs.addEventListener('click', (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+        const tab = target.closest<HTMLElement>('[data-mode]');
+        if (tab?.dataset.mode) showMode(tab.dataset.mode, true);
+      });
+      const host = document.createElement('div');
+      host.id = 'crypto-panel';
+      head.after(tabs);
+      mkt.append(spot, host);
+      showMode(activeMode, false);
+    };
+
+    win.renderMkt = function renderMktWithTradeModes(category: string) {
+      originalRenderMkt(category);
+      if (category === 'Crypto') decorate();
+    };
+  };
+
   const style = document.createElement('style');
   style.textContent = `
     .member-tool-filters,.member-tool-alert-form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:18px 0}
@@ -1781,6 +2342,43 @@ export function installMemberDashboardTools() {
     .statement-muted{color:var(--mute)}
     @media(max-width:760px){.statement-filters,.statement-custom{grid-template-columns:1fr}.statement-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.referral-stats,.referral-steps{grid-template-columns:1fr}.referral-field{flex-wrap:wrap}.help-grid{grid-template-columns:1fr}.security-item{flex-direction:column;align-items:flex-start}.security-item-side{justify-content:flex-start}}
     @media(max-width:760px){.member-tool-filters,.member-tool-alert-form{grid-template-columns:1fr}.member-tool-row{grid-template-columns:minmax(0,1fr) auto;gap:8px}.member-tool-heading{display:none}.member-tool-number{text-align:left}.member-tool-action{grid-column:1/-1;justify-self:start}.member-tool-calendar-facts{grid-template-columns:repeat(3,minmax(0,1fr))}}
+    .lending-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:18px 0}
+    .lending-stat{padding:16px;border:1px solid var(--line);border-radius:14px;min-width:0}
+    .lending-stat small{display:block;color:var(--mute);font-size:12px}
+    .lending-stat b{display:block;margin-top:6px;font-size:20px;letter-spacing:-.02em;overflow-wrap:anywhere}
+    .lending-banner{display:grid;gap:6px;justify-items:start;margin:0 0 18px;padding:14px 16px;border:1px solid var(--line);border-radius:12px}
+    .lending-banner b{font-size:14px}
+    .lending-banner p{margin:0;color:var(--mute);font-size:13px;line-height:1.5}
+    .lending-fieldset{border:0;margin:0;padding:0;min-width:0}
+    .lending-fieldset:disabled{opacity:.55}
+    .lending-ack{display:flex;gap:10px;align-items:flex-start;margin:16px 0 4px;color:var(--mute);font-size:13px;line-height:1.5;cursor:pointer}
+    .lending-ack input{margin-top:3px;flex:none}
+    .lending-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 0;border-top:1px solid var(--line)}
+    .lending-row:first-child{border-top:0;padding-top:0}
+    .lending-row-main{display:grid;gap:3px;min-width:0}
+    .lending-row-main small{color:var(--mute);font-size:12px}
+    .lending-steps{list-style:none;counter-reset:lending;display:grid;gap:10px;margin:0;padding:0}
+    .lending-steps li{counter-increment:lending;display:grid;grid-template-columns:28px minmax(0,1fr);column-gap:12px;row-gap:2px;padding:14px;border:1px solid var(--line);border-radius:12px}
+    .lending-steps li::before{content:counter(lending);grid-row:span 2;display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--ink);color:var(--bg);font-size:13px;font-weight:700}
+    .lending-steps span{color:var(--mute);font-size:13px;line-height:1.5}
+    .lending-notes{margin:0;padding-left:20px;color:var(--mute);font-size:13px;line-height:1.7;max-width:70ch}
+    @media(max-width:760px){.lending-stats{grid-template-columns:1fr}}
+    #crypto-modes{margin:18px 0 6px;overflow-x:auto;flex-wrap:nowrap}
+    #crypto-modes .tab{white-space:nowrap}
+    .tm-title{font-size:clamp(28px,5vw,40px)}
+    .tm-banner{display:grid;gap:6px;margin:0 0 18px;padding:14px 16px;border:1px solid var(--line);border-radius:12px}
+    .tm-banner b{font-size:14px}
+    .tm-banner p{margin:0;color:var(--mute);font-size:13px;line-height:1.5}
+    .tm-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:0 0 6px}
+    .tm-stat{min-width:0;padding:14px 16px;border:1px solid var(--line);border-radius:14px}
+    .tm-stat small{display:block;color:var(--mute);font-size:12px}
+    .tm-stat b{display:block;margin-top:6px;font-size:20px}
+    .tm-fieldset{border:0;margin:0;padding:0;min-width:0}
+    .tm-fieldset:disabled{opacity:.55}
+    .tm-ack{display:flex;gap:10px;align-items:flex-start;margin:16px 0 4px;color:var(--mute);font-size:13px;line-height:1.5;cursor:pointer}
+    .tm-ack input{margin-top:3px;flex:none}
+    .tm-notes{margin:0;padding-left:20px;color:var(--mute);font-size:13px;line-height:1.7;max-width:70ch}
+    @media(max-width:760px){.tm-stats{grid-template-columns:1fr}}
   `;
   document.head.appendChild(style);
 
@@ -1862,6 +2460,8 @@ export function installMemberDashboardTools() {
         handleStatementsAction(action, button);
       } else if (action === 'submit-ticket') {
         void submitSupportTicket(button);
+      } else if (action === 'submit-lending') {
+        void submitLendingRequest(button);
       } else if (action === 'security-action') {
         void handleSecurityAction(button);
       } else if (action === 'open-verification') {
@@ -1888,6 +2488,8 @@ export function installMemberDashboardTools() {
   R.Profile = renderProfile;
   R.Signals = renderSignals;
   R['Help center'] = renderHelp;
+  R.Lending = renderLending;
+  installCryptoModes();
   R['Security and verification'] = () => {
     securityView = 'overview';
     renderSecurity();
