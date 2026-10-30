@@ -1654,7 +1654,7 @@ export function installMemberDashboardTools() {
     })();
   };
 
-  // ---- Forex terminal (live quotes) -------------------------------------
+  // ---- Market terminal: Forex, Crypto, Commodities (live quotes) --------
   // The chart is fed only by real TradingView quotes (polled every few
   // seconds) on top of recent history from the market-data function. No
   // price movement is simulated. Order placement is NOT connected: set
@@ -1662,33 +1662,100 @@ export function installMemberDashboardTools() {
   // backend exists; until then Buy / Sell only show a notice.
   const TRADING_CONNECTED = false;
   const FX_PAYOUT_PERCENT: number | null = null;
-  const FX_PAIRS = [
-    { symbol: 'EUR/USD', name: 'Euro / US dollar', ticker: 'FX_IDC:EURUSD' },
-    { symbol: 'GBP/USD', name: 'British pound / US dollar', ticker: 'FX_IDC:GBPUSD' },
-    { symbol: 'USD/JPY', name: 'US dollar / Japanese yen', ticker: 'FX_IDC:USDJPY' },
-    { symbol: 'AUD/USD', name: 'Australian dollar / US dollar', ticker: 'FX_IDC:AUDUSD' },
-    { symbol: 'USD/CAD', name: 'US dollar / Canadian dollar', ticker: 'FX_IDC:USDCAD' },
-    { symbol: 'USD/CHF', name: 'US dollar / Swiss franc', ticker: 'FX_IDC:USDCHF' },
-    { symbol: 'NZD/USD', name: 'New Zealand dollar / US dollar', ticker: 'FX_IDC:NZDUSD' },
-    { symbol: 'EUR/GBP', name: 'Euro / British pound', ticker: 'FX_IDC:EURGBP' },
-    { symbol: 'EUR/JPY', name: 'Euro / Japanese yen', ticker: 'FX_IDC:EURJPY' },
-    { symbol: 'GBP/JPY', name: 'British pound / Japanese yen', ticker: 'FX_IDC:GBPJPY' },
-    { symbol: 'USD/CNY', name: 'US dollar / Chinese yuan', ticker: 'FX_IDC:USDCNY' },
-    { symbol: 'USD/ZAR', name: 'US dollar / South African rand', ticker: 'FX_IDC:USDZAR' },
-    { symbol: 'USD/NGN', name: 'US dollar / Nigerian naira', ticker: 'FX_IDC:USDNGN' },
-  ];
+
+  type FxPair = { symbol: string; name: string; ticker: string; history: string };
+  type FxMarket = {
+    chip: string;
+    scanner: string;
+    category: string;
+    listTitle: string;
+    note: string;
+    decimals: (price: number) => number;
+    pairs: FxPair[];
+  };
+  const FX_MARKETS: Record<string, FxMarket> = {
+    Forex: {
+      chip: 'Currency pairs · weekdays',
+      scanner: 'forex',
+      category: 'forex',
+      listTitle: 'Forex pairs',
+      note: 'Forex quotes are live market quotes from TradingView and may be delayed. The forex market is closed on weekends.',
+      decimals: (price) => (price > 500 ? 2 : price > 50 ? 3 : 5),
+      pairs: [
+        { symbol: 'EUR/USD', name: 'Euro / US dollar', ticker: 'FX_IDC:EURUSD', history: 'EUR-USD' },
+        { symbol: 'GBP/USD', name: 'British pound / US dollar', ticker: 'FX_IDC:GBPUSD', history: 'GBP-USD' },
+        { symbol: 'USD/JPY', name: 'US dollar / Japanese yen', ticker: 'FX_IDC:USDJPY', history: 'USD-JPY' },
+        { symbol: 'AUD/USD', name: 'Australian dollar / US dollar', ticker: 'FX_IDC:AUDUSD', history: 'AUD-USD' },
+        { symbol: 'USD/CAD', name: 'US dollar / Canadian dollar', ticker: 'FX_IDC:USDCAD', history: 'USD-CAD' },
+        { symbol: 'USD/CHF', name: 'US dollar / Swiss franc', ticker: 'FX_IDC:USDCHF', history: 'USD-CHF' },
+        { symbol: 'NZD/USD', name: 'New Zealand dollar / US dollar', ticker: 'FX_IDC:NZDUSD', history: 'NZD-USD' },
+        { symbol: 'EUR/GBP', name: 'Euro / British pound', ticker: 'FX_IDC:EURGBP', history: 'EUR-GBP' },
+        { symbol: 'EUR/JPY', name: 'Euro / Japanese yen', ticker: 'FX_IDC:EURJPY', history: 'EUR-JPY' },
+        { symbol: 'GBP/JPY', name: 'British pound / Japanese yen', ticker: 'FX_IDC:GBPJPY', history: 'GBP-JPY' },
+        { symbol: 'USD/CNY', name: 'US dollar / Chinese yuan', ticker: 'FX_IDC:USDCNY', history: 'USD-CNY' },
+        { symbol: 'USD/ZAR', name: 'US dollar / South African rand', ticker: 'FX_IDC:USDZAR', history: 'USD-ZAR' },
+        { symbol: 'USD/NGN', name: 'US dollar / Nigerian naira', ticker: 'FX_IDC:USDNGN', history: 'USD-NGN' },
+      ],
+    },
+    Crypto: {
+      chip: 'Digital assets · 24/7',
+      scanner: 'crypto',
+      category: 'crypto',
+      listTitle: 'Crypto assets',
+      note: 'Crypto quotes are Binance USDT markets via TradingView and may be delayed. Prices can move sharply at any hour.',
+      decimals: (price) => (price >= 1000 ? 2 : price >= 1 ? 3 : price >= 0.1 ? 4 : 6),
+      pairs: [
+        { symbol: 'BTC', name: 'Bitcoin', ticker: 'BINANCE:BTCUSDT', history: 'bitcoin' },
+        { symbol: 'ETH', name: 'Ethereum', ticker: 'BINANCE:ETHUSDT', history: 'ethereum' },
+        { symbol: 'SOL', name: 'Solana', ticker: 'BINANCE:SOLUSDT', history: 'solana' },
+        { symbol: 'BNB', name: 'BNB', ticker: 'BINANCE:BNBUSDT', history: 'binancecoin' },
+        { symbol: 'XRP', name: 'XRP', ticker: 'BINANCE:XRPUSDT', history: 'ripple' },
+        { symbol: 'DOGE', name: 'Dogecoin', ticker: 'BINANCE:DOGEUSDT', history: 'dogecoin' },
+        { symbol: 'ADA', name: 'Cardano', ticker: 'BINANCE:ADAUSDT', history: 'cardano' },
+        { symbol: 'TRX', name: 'TRON', ticker: 'BINANCE:TRXUSDT', history: 'tron' },
+        { symbol: 'AVAX', name: 'Avalanche', ticker: 'BINANCE:AVAXUSDT', history: 'avalanche-2' },
+        { symbol: 'LINK', name: 'Chainlink', ticker: 'BINANCE:LINKUSDT', history: 'chainlink' },
+      ],
+    },
+    Commodities: {
+      chip: 'Metals & energy · futures',
+      scanner: 'futures',
+      category: 'commodities',
+      listTitle: 'Commodities',
+      note: 'Commodity quotes are front-month futures from TradingView and may be delayed. Prices follow exchange hours and can pause overnight and on weekends.',
+      decimals: (price) => (price < 10 ? 3 : 2),
+      pairs: [
+        { symbol: 'XAU', name: 'Gold futures', ticker: 'COMEX:GC1!', history: 'XAU' },
+        { symbol: 'XAG', name: 'Silver futures', ticker: 'COMEX:SI1!', history: 'XAG' },
+        { symbol: 'XPT', name: 'Platinum futures', ticker: 'NYMEX:PL1!', history: 'XPT' },
+        { symbol: 'XPD', name: 'Palladium futures', ticker: 'NYMEX:PA1!', history: 'XPD' },
+        { symbol: 'WTI', name: 'Crude oil (WTI) futures', ticker: 'NYMEX:CL1!', history: 'WTI' },
+        { symbol: 'NG', name: 'Natural gas futures', ticker: 'NYMEX:NG1!', history: 'NG' },
+        { symbol: 'HG', name: 'Copper futures', ticker: 'COMEX:HG1!', history: 'HG' },
+      ],
+    },
+  };
   const FX_TIMERS = [5, 15, 30, 60, 180, 300];
   const FX_AMOUNTS = [1, 5, 10, 25, 50, 100];
 
   type FxTick = { t: number; p: number; live?: boolean };
   type FxCandle = { t: number; o: number; h: number; l: number; c: number };
+  type FxQuote = {
+    p: number;
+    change: number | null;
+    open: number | null;
+    high: number | null;
+    low: number | null;
+    volume: number | null;
+  };
   const fx = {
-    symbol: 'EUR/USD',
+    market: 'Forex',
+    symbols: { Forex: 'EUR/USD', Crypto: 'BTC', Commodities: 'XAU' } as Record<string, string>,
     style: 'line' as 'line' | 'candles',
     ticks: [] as FxTick[],
     candles: [] as FxCandle[],
     interval: 60,
-    quotes: {} as Record<string, { p: number; change: number | null }>,
+    quotes: {} as Record<string, FxQuote>,
     timerIndex: 2,
     amount: 1,
     run: 0,
@@ -1698,16 +1765,21 @@ export function installMemberDashboardTools() {
     lastSecond: 0,
     colors: null as null | { at: number; values: Record<string, string> },
   };
+  const fxConfig = () => FX_MARKETS[fx.market] || FX_MARKETS.Forex;
+  const fxSymbol = () => fx.symbols[fx.market] || fxConfig().pairs[0].symbol;
 
   const fxTime = (totalSeconds: number) => {
     const pad = (value: number) => String(value).padStart(2, '0');
     return `${pad(Math.floor(totalSeconds / 3600))}:${pad(Math.floor((totalSeconds % 3600) / 60))}:${pad(totalSeconds % 60)}`;
   };
   const fxClock = (date: Date) => date.toLocaleTimeString([], { hour12: false });
-  const fxDecimals = (price: number) => (price > 500 ? 2 : price > 50 ? 3 : 5);
-  const fxPrice = (price: number) => price.toFixed(fxDecimals(price));
+  const fxPrice = (price: number) => price.toFixed(fxConfig().decimals(price));
   const fxChange = (change: number | null) =>
     change === null ? '—' : `${change >= 0 ? '+' : '−'}${Math.abs(change).toFixed(2)}%`;
+  const fxCompact = (value: number | null) =>
+    value === null || value <= 0
+      ? '—'
+      : new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(value);
   const fxOffset = () => {
     const minutes = -new Date().getTimezoneOffset();
     const sign = minutes >= 0 ? '+' : '−';
@@ -1715,6 +1787,12 @@ export function installMemberDashboardTools() {
     const hours = Math.floor(abs / 60);
     const rest = abs % 60;
     return `UTC${sign}${hours}${rest ? ':' + String(rest).padStart(2, '0') : ''}`;
+  };
+  const fxAlpha = (color: string, alpha: number) => {
+    const match = /^#([0-9a-f]{6})$/i.exec(color);
+    if (!match) return color;
+    const value = parseInt(match[1], 16);
+    return `rgba(${(value >> 16) & 255},${(value >> 8) & 255},${value & 255},${alpha})`;
   };
 
   const stopForex = () => {
@@ -1761,8 +1839,8 @@ export function installMemberDashboardTools() {
   };
 
   const updateForexList = () => {
-    FX_PAIRS.forEach((pair, index) => {
-      const quote = fx.quotes[pair.symbol];
+    fxConfig().pairs.forEach((pair, index) => {
+      const quote = fx.quotes[pair.ticker];
       const price = root.querySelector<HTMLElement>(`#fx-p-${index}`);
       const change = root.querySelector<HTMLElement>(`#fx-c-${index}`);
       if (price) price.textContent = quote ? fxPrice(quote.p) : '—';
@@ -1771,6 +1849,18 @@ export function installMemberDashboardTools() {
         change.className = `fx-row-num ${quote && quote.change !== null ? (quote.change >= 0 ? 'up' : 'dn') : ''}`;
       }
     });
+    const current = fx.quotes[(fxConfig().pairs.find((pair) => pair.symbol === fxSymbol()) || fxConfig().pairs[0]).ticker];
+    const set = (id: string, value: string, tone = '') => {
+      const node = root.querySelector<HTMLElement>(`#${id}`);
+      if (!node) return;
+      node.textContent = value;
+      node.className = tone;
+    };
+    set('fx-s-change', fxChange(current ? current.change : null), current && current.change !== null ? (current.change >= 0 ? 'up' : 'dn') : '');
+    set('fx-s-open', current && current.open !== null ? fxPrice(current.open) : '—');
+    set('fx-s-high', current && current.high !== null ? fxPrice(current.high) : '—');
+    set('fx-s-low', current && current.low !== null ? fxPrice(current.low) : '—');
+    set('fx-s-vol', fxCompact(current ? current.volume : null));
   };
 
   const fxBuildCandles = () => {
@@ -1860,14 +1950,15 @@ export function installMemberDashboardTools() {
     }
     const last = visible.length ? visible[visible.length - 1].p : candles[candles.length - 1].c;
     const pts = [...visible, { t: now, p: last }];
+    const inWindow = pts.filter((pt) => pt.t >= tMin);
+    const basis = inWindow.length ? inWindow : pts.slice(-2);
+    const tone = last >= basis[0].p ? c.up : c.dn;
     let lo: number;
     let hi: number;
     if (candleMode && candles.length) {
       lo = Math.min(...candles.map((candle) => candle.l));
       hi = Math.max(...candles.map((candle) => candle.h));
     } else {
-      const inWindow = pts.filter((pt) => pt.t >= tMin);
-      const basis = inWindow.length ? inWindow : pts.slice(-2);
       lo = Math.min(...basis.map((pt) => pt.p));
       hi = Math.max(...basis.map((pt) => pt.p));
     }
@@ -1916,8 +2007,7 @@ export function installMemberDashboardTools() {
       const bodyWidth = Math.max(2, Math.min(18, (x(tMin + fx.interval * 1000) - x(tMin)) * 0.7));
       candles.forEach((candle) => {
         const cx = x(candle.t + (fx.interval * 1000) / 2);
-        const rising = candle.c >= candle.o;
-        const color = rising ? c.up : c.dn;
+        const color = candle.c >= candle.o ? c.up : c.dn;
         ctx.strokeStyle = color;
         ctx.fillStyle = color;
         ctx.lineWidth = 1.4;
@@ -1930,9 +2020,9 @@ export function installMemberDashboardTools() {
         ctx.fillRect(cx - bodyWidth / 2, top, bodyWidth, bodyHeight);
       });
     } else {
-      // expiration zone, area and line
+      // expiration zone, gradient area and glowing trend line
       const expiryX = x(now + timer * 1000);
-      ctx.globalAlpha = 0.07;
+      ctx.globalAlpha = 0.06;
       ctx.fillStyle = c.brand;
       ctx.fillRect(nowX, yTop - 20, Math.max(0, expiryX - nowX), yBottom - yTop + 20);
       ctx.globalAlpha = 1;
@@ -1945,20 +2035,24 @@ export function installMemberDashboardTools() {
       ctx.lineTo(nowX, yBottom);
       ctx.lineTo(x(pts[0].t), yBottom);
       ctx.closePath();
-      ctx.globalAlpha = 0.18;
-      ctx.fillStyle = c.brand;
+      const gradient = ctx.createLinearGradient(0, yTop, 0, yBottom);
+      gradient.addColorStop(0, fxAlpha(tone, 0.34));
+      gradient.addColorStop(1, fxAlpha(tone, 0));
+      ctx.fillStyle = gradient;
       ctx.fill();
-      ctx.globalAlpha = 1;
 
       ctx.beginPath();
       pts.forEach((pt, index) => {
         if (index === 0) ctx.moveTo(x(pt.t), y(pt.p));
         else ctx.lineTo(x(pt.t), y(pt.p));
       });
-      ctx.strokeStyle = c.brand;
-      ctx.lineWidth = 2.2;
+      ctx.strokeStyle = tone;
+      ctx.lineWidth = 2.4;
       ctx.lineJoin = 'round';
+      ctx.shadowColor = tone;
+      ctx.shadowBlur = 10;
       ctx.stroke();
+      ctx.shadowBlur = 0;
 
       ctx.strokeStyle = c.brand;
       ctx.globalAlpha = 0.7;
@@ -1980,8 +2074,9 @@ export function installMemberDashboardTools() {
     }
 
     // current price line and tag
+    const accent = candleMode ? c.brand : tone;
     ctx.setLineDash([5, 5]);
-    ctx.strokeStyle = c.brand;
+    ctx.strokeStyle = accent;
     ctx.globalAlpha = 0.65;
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -1995,18 +2090,18 @@ export function installMemberDashboardTools() {
     ctx.font = `700 15px ${font}`;
     const tagWidth = ctx.measureText(label).width + 22;
     const tagY = Math.min(Math.max(py - 15, 4), h - 38);
-    ctx.fillStyle = c.brand;
+    ctx.fillStyle = accent;
     ctx.beginPath();
     ctx.roundRect(w - tagWidth - 6, tagY, tagWidth, 30, 6);
     ctx.fill();
-    ctx.fillStyle = '#fff';
+    ctx.fillStyle = c.bg;
     ctx.textAlign = 'center';
     ctx.fillText(label, w - tagWidth / 2 - 6, tagY + 20);
 
     if (!candleMode) {
       const pulse = 9 + 3 * Math.sin(now / 280);
+      ctx.fillStyle = tone;
       ctx.globalAlpha = 0.28;
-      ctx.fillStyle = c.brand;
       ctx.beginPath();
       ctx.arc(nowX, py, pulse, 0, Math.PI * 2);
       ctx.fill();
@@ -2029,15 +2124,18 @@ export function installMemberDashboardTools() {
       }
     ).__AUVRENTHIA_MARKET_REQUEST__;
     if (!bridge) return;
-    const symbol = fx.symbol;
+    const symbol = fxSymbol();
+    const market = fx.market;
+    const config = fxConfig();
+    const pair = config.pairs.find((item) => item.symbol === symbol) || config.pairs[0];
     try {
       const result = await bridge({
         action: 'history',
-        category: 'forex',
-        symbol: symbol.replace('/', '-'),
+        category: config.category,
+        symbol: pair.history,
         days: 1,
       });
-      if (run !== fx.run || symbol !== fx.symbol) return;
+      if (run !== fx.run || symbol !== fxSymbol() || market !== fx.market) return;
       const raw = Array.isArray(result?.candles) ? result.candles : [];
       const rows: FxCandle[] = raw.flatMap((candle: unknown) => {
         if (!candle || typeof candle !== 'object') return [];
@@ -2076,30 +2174,36 @@ export function installMemberDashboardTools() {
 
   const pollForex = async (run: number) => {
     if (run !== fx.run) return;
+    const config = fxConfig();
+    const selected = config.pairs.find((pair) => pair.symbol === fxSymbol()) || config.pairs[0];
     try {
-      const response = await fetch('https://scanner.tradingview.com/forex/scan', {
+      const response = await fetch(`https://scanner.tradingview.com/${config.scanner}/scan`, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=UTF-8', Accept: 'application/json' },
         body: JSON.stringify({
-          symbols: { tickers: FX_PAIRS.map((pair) => pair.ticker), query: { types: [] } },
-          columns: ['close', 'change'],
+          symbols: { tickers: config.pairs.map((pair) => pair.ticker), query: { types: [] } },
+          columns: ['close', 'change', 'open', 'high', 'low', 'volume'],
         }),
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const payload = (await response.json()) as { data?: { s?: string; d?: unknown[] }[] };
       if (run !== fx.run) return;
       const rows = Array.isArray(payload.data) ? payload.data : [];
+      const num = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : null);
       rows.forEach((row) => {
-        const pair = FX_PAIRS.find((item) => item.ticker === row.s);
-        const price = row.d?.[0];
-        const change = row.d?.[1];
-        if (!pair || typeof price !== 'number' || !Number.isFinite(price) || price <= 0) return;
-        fx.quotes[pair.symbol] = {
+        const pair = config.pairs.find((item) => item.ticker === row.s);
+        const price = num(row.d?.[0]);
+        if (!pair || price === null || price <= 0) return;
+        fx.quotes[pair.ticker] = {
           p: price,
-          change: typeof change === 'number' && Number.isFinite(change) ? change : null,
+          change: num(row.d?.[1]),
+          open: num(row.d?.[2]),
+          high: num(row.d?.[3]),
+          low: num(row.d?.[4]),
+          volume: num(row.d?.[5]),
         };
       });
-      const current = fx.quotes[fx.symbol];
+      const current = fx.quotes[selected.ticker];
       if (!current) throw new Error('No quote returned');
       fx.ticks.push({ t: Date.now(), p: current.p, live: true });
       if (fx.ticks.length > 900) fx.ticks.splice(0, fx.ticks.length - 900);
@@ -2117,10 +2221,11 @@ export function installMemberDashboardTools() {
   const startForex = () => {
     stopForex();
     const run = fx.run;
+    const market = fx.market;
     const frame = () => {
       if (run !== fx.run) return;
       const canvas = root.querySelector<HTMLCanvasElement>('#fx-canvas');
-      if (!canvas || !canvas.isConnected || page !== 'Forex') {
+      if (!canvas || !canvas.isConnected || page !== market) {
         stopForex();
         return;
       }
@@ -2132,37 +2237,62 @@ export function installMemberDashboardTools() {
     void pollForex(run);
   };
 
-  const fxFlags = (symbol: string, small = false) => {
-    const [base, quote] = symbol.split('/');
-    return `<span class="fx-flags${small ? ' sm' : ''}" aria-hidden="true"><i>${escapeHtml(base)}</i><i>${escapeHtml(quote)}</i></span>`;
+  const fxBadges = (symbol: string, small = false) => {
+    const parts = symbol.includes('/') ? symbol.split('/') : [symbol.slice(0, 4)];
+    return `<span class="fx-flags${small ? ' sm' : ''}${parts.length === 1 ? ' one' : ''}" aria-hidden="true">${parts
+      .map((part) => `<i>${escapeHtml(part)}</i>`)
+      .join('')}</span>`;
+  };
+
+  const resetForexSeries = () => {
+    fx.ticks = [];
+    fx.candles = [];
+    fx.interval = 60;
+    fx.status = 'Connecting to live quotes…';
   };
 
   const renderForex = () => {
-    const pairOptions = FX_PAIRS.map(
-      (pair) =>
-        `<option value="${escapeHtml(pair.symbol)}"${pair.symbol === fx.symbol ? ' selected' : ''}>${escapeHtml(pair.symbol)}</option>`,
-    ).join('');
+    const config = fxConfig();
+    const symbol = fxSymbol();
+    const pairOptions = config.pairs
+      .map(
+        (pair) =>
+          `<option value="${escapeHtml(pair.symbol)}"${pair.symbol === symbol ? ' selected' : ''}>${escapeHtml(pair.symbol)}</option>`,
+      )
+      .join('');
     const arrow = (path: string) =>
       `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${path}"/></svg>`;
-    const rows = FX_PAIRS.map(
-      (pair, index) =>
-        `<button class="fx-row${pair.symbol === fx.symbol ? ' on' : ''}" type="button" data-tool-action="fx-pair" data-symbol="${escapeHtml(pair.symbol)}"><span class="fx-row-name">${fxFlags(pair.symbol, true)}<span><b>${escapeHtml(pair.symbol)}</b><small>${escapeHtml(pair.name)}</small></span></span><span class="fx-row-num" id="fx-p-${index}">—</span><span class="fx-row-num" id="fx-c-${index}">—</span></button>`,
-    ).join('');
+    const rows = config.pairs
+      .map(
+        (pair, index) =>
+          `<button class="fx-row${pair.symbol === symbol ? ' on' : ''}" type="button" data-tool-action="fx-pair" data-symbol="${escapeHtml(pair.symbol)}"><span class="fx-row-name">${fxBadges(pair.symbol, true)}<span><b>${escapeHtml(pair.symbol)}</b><small>${escapeHtml(pair.name)}</small></span></span><span class="fx-row-num" id="fx-p-${index}">—</span><span class="fx-row-num" id="fx-c-${index}">—</span></button>`,
+      )
+      .join('');
+    const tabs = Object.keys(FX_MARKETS)
+      .map(
+        (name) =>
+          `<button type="button" class="${name === fx.market ? 'on' : ''}" data-tool-action="navigate" data-destination="${escapeHtml(name)}"${name === fx.market ? ' aria-current="page"' : ''}>${escapeHtml(name)}</button>`,
+      )
+      .join('');
+    const stat = (label: string, id: string) =>
+      `<div class="fx-stat"><span>${label}</span><b id="${id}">—</b></div>`;
     root.innerHTML = `<div class="fx">
+      <div class="fx-tabs"><div class="fx-tabset" role="tablist" aria-label="Markets">${tabs}</div><span class="fx-chip">${escapeHtml(config.chip)}</span></div>
       <div class="fx-main">
         <div class="fx-left">
           <div class="fx-bar">
-            <label class="fx-pair">${fxFlags(fx.symbol)}<select id="fx-pair" aria-label="Currency pair">${pairOptions}</select></label>
+            <label class="fx-pair">${fxBadges(symbol)}<select id="fx-pair" aria-label="Choose asset">${pairOptions}</select></label>
             <div class="fx-exp"><small>Expiration time</small><b id="fx-exp">--:--:--</b></div>
           </div>
           <div class="fx-chartwrap">
-            <canvas id="fx-canvas" aria-label="Live ${escapeHtml(fx.symbol)} price chart"></canvas>
+            <canvas id="fx-canvas" aria-label="Live ${escapeHtml(symbol)} price chart"></canvas>
             <div class="fx-stamp" id="fx-stamp"></div>
             <div class="fx-styles" role="group" aria-label="Chart style">
               <button type="button" class="${fx.style === 'line' ? 'on' : ''}" data-tool-action="fx-style" data-style="line" aria-pressed="${fx.style === 'line'}">Line</button>
               <button type="button" class="${fx.style === 'candles' ? 'on' : ''}" data-tool-action="fx-style" data-style="candles" aria-pressed="${fx.style === 'candles'}">Candles</button>
             </div>
           </div>
+          <div class="fx-stats">${stat('Change', 'fx-s-change')}${stat('Open', 'fx-s-open')}${stat('High', 'fx-s-high')}${stat('Low', 'fx-s-low')}${stat('Volume', 'fx-s-vol')}</div>
           <div class="fx-sent" aria-label="Recent price direction">
             <span class="up" id="fx-up">—</span>
             <div class="fx-sentbar"><u id="fx-sentfill"></u></div>
@@ -2186,12 +2316,12 @@ export function installMemberDashboardTools() {
           <p class="hint" id="fx-status" role="status">${escapeHtml(fx.status)}</p>
         </div>
       </div>
-      <h2 class="sec">Forex pairs</h2>
+      <h2 class="sec">${escapeHtml(config.listTitle)}</h2>
       <div class="fx-list">
-        <div class="fx-list-head"><span>Pair</span><span>Price</span><span>Change</span></div>
+        <div class="fx-list-head"><span>Asset</span><span>Price</span><span>Change</span></div>
         ${rows}
       </div>
-      <p class="note">Prices are live market quotes from TradingView and may be delayed or briefly unavailable. Trading carries risk, including loss of your capital.</p>
+      <p class="note">${escapeHtml(config.note)} Trading carries risk, including loss of your capital.</p>
     </div>`;
     updateForexPayout();
     updateForexList();
@@ -2219,12 +2349,9 @@ export function installMemberDashboardTools() {
       });
     } else if (action === 'fx-pair') {
       const symbol = button.dataset.symbol || '';
-      if (!FX_PAIRS.some((pair) => pair.symbol === symbol) || symbol === fx.symbol) return;
-      fx.symbol = symbol;
-      fx.ticks = [];
-      fx.candles = [];
-      fx.interval = 60;
-      fx.status = 'Connecting to live quotes…';
+      if (!fxConfig().pairs.some((pair) => pair.symbol === symbol) || symbol === fxSymbol()) return;
+      fx.symbols[fx.market] = symbol;
+      resetForexSeries();
       renderForex();
       window.scrollTo(0, 0);
     } else if (action === 'fx-buy' || action === 'fx-sell') {
@@ -2250,26 +2377,28 @@ export function installMemberDashboardTools() {
   const handleForexChange = (event: Event) => {
     const target = event.target;
     if (target instanceof HTMLSelectElement && target.id === 'fx-pair') {
-      if (!FX_PAIRS.some((pair) => pair.symbol === target.value) || target.value === fx.symbol) return;
-      fx.symbol = target.value;
-      fx.ticks = [];
-      fx.candles = [];
-      fx.interval = 60;
-      fx.status = 'Connecting to live quotes…';
+      if (!fxConfig().pairs.some((pair) => pair.symbol === target.value) || target.value === fxSymbol()) return;
+      fx.symbols[fx.market] = target.value;
+      resetForexSeries();
       renderForex();
     }
   };
 
-  // Open the terminal instead of the stock market page when Forex is chosen.
+  // Open the terminal instead of the plain market page for these sections.
   document.getElementById('nav')?.addEventListener(
     'click',
     (event) => {
       const target = event.target;
       if (!(target instanceof Element)) return;
       const button = target.closest<HTMLButtonElement>('.nav');
-      if (!button || button.dataset.p !== 'Forex') return;
+      const name = button?.dataset.p || '';
+      if (!button || !FX_MARKETS[name]) return;
       event.stopImmediatePropagation();
-      page = 'Forex';
+      if (fx.market !== name) {
+        fx.market = name;
+        resetForexSeries();
+      }
+      page = name;
       document
         .querySelectorAll<HTMLElement>('.nav')
         .forEach((item) => item.classList.toggle('on', item === button));
@@ -2292,6 +2421,13 @@ export function installMemberDashboardTools() {
   forexStyle.textContent = `
     .fx{max-width:760px;margin:0 auto}
     .fx-main{display:block}
+    .fx-tabs{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px}
+    .fx-tabset{display:flex;gap:4px;padding:4px;border-radius:12px;background:color-mix(in srgb,var(--ink) 7%,transparent);max-width:100%;overflow-x:auto}
+    .fx-tabset button{padding:7px 14px;border-radius:9px;color:var(--mute);font-size:14px;font-weight:700;white-space:nowrap}
+    .fx-tabset button:hover{color:var(--ink)}
+    .fx-tabset button.on{background:var(--bg);color:var(--ink);box-shadow:0 1px 4px rgba(0,0,0,.2)}
+    .fx-chip{display:inline-flex;align-items:center;gap:7px;color:var(--mute);font-size:12px;font-weight:600}
+    .fx-chip::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--up);box-shadow:0 0 0 3px color-mix(in srgb,var(--up) 22%,transparent)}
     .fx-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
     .fx-pair{position:relative;display:inline-flex;align-items:center;gap:10px;padding:8px 36px 8px 10px;border:1px solid var(--line);border-radius:14px;background:color-mix(in srgb,var(--ink) 5%,transparent);cursor:pointer}
     .fx-pair:focus-within{box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 25%,transparent)}
@@ -2299,19 +2435,25 @@ export function installMemberDashboardTools() {
     .fx-flags{display:flex;flex:none}
     .fx-flags i{display:grid;place-items:center;width:32px;height:32px;border-radius:50%;border:2px solid var(--bg);background:var(--brand);color:#fff;font-style:normal;font-size:10px;font-weight:800}
     .fx-flags i+i{margin-left:-11px;background:var(--ink);color:var(--bg)}
+    .fx-flags.one i{background:linear-gradient(135deg,var(--brand),color-mix(in srgb,var(--brand) 55%,var(--ink)));font-size:9px}
     .fx-flags.sm i{width:28px;height:28px;font-size:9px}
     .fx-pair select{appearance:none;-webkit-appearance:none;border:0;outline:none;background:transparent;color:var(--ink);font:inherit;font-size:18px;font-weight:700;cursor:pointer}
     .fx-pair select option{background:var(--bg);color:var(--ink)}
     .fx-exp{text-align:right;color:var(--mute);font-size:13px;line-height:1.35}
     .fx-exp small{display:block;font-size:13px}
     .fx-exp b{display:block;font-size:17px;font-weight:600;font-variant-numeric:tabular-nums}
-    .fx-chartwrap{position:relative;height:clamp(320px,52vh,520px);border:1px solid var(--line);border-radius:16px;overflow:hidden;background:color-mix(in srgb,var(--brand) 5%,var(--bg));touch-action:pan-y}
+    .fx-chartwrap{position:relative;height:clamp(320px,52vh,520px);border:1px solid var(--line);border-radius:16px;overflow:hidden;background:radial-gradient(120% 90% at 85% 0%,color-mix(in srgb,var(--brand) 11%,transparent),transparent 60%),color-mix(in srgb,var(--brand) 4%,var(--bg));touch-action:pan-y}
     .fx-chartwrap canvas{position:absolute;left:0;top:0;display:block}
     .fx-stamp{position:absolute;left:12px;top:12px;color:var(--mute);font-size:13px;font-variant-numeric:tabular-nums;pointer-events:none}
     .fx-styles{position:absolute;left:12px;top:38px;display:flex;gap:3px;padding:3px;border-radius:10px;background:color-mix(in srgb,var(--ink) 9%,transparent);z-index:2}
     .fx-styles button{padding:5px 11px;border-radius:8px;color:var(--mute);font-size:12px;font-weight:700}
     .fx-styles button.on{background:var(--bg);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.2)}
-    .fx-sent{display:flex;align-items:center;gap:10px;margin-top:12px;font-size:13px;font-weight:700}
+    .fx-stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));margin-top:12px;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+    .fx-stat{display:grid;gap:3px;padding:11px 12px;min-width:0}
+    .fx-stat+.fx-stat{border-left:1px solid var(--line)}
+    .fx-stat span{color:var(--mute);font-size:11px}
+    .fx-stat b{font-size:14px;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .fx-sent{display:flex;align-items:center;gap:10px;margin-top:14px;font-size:13px;font-weight:700}
     .fx-sentbar{position:relative;flex:1;height:10px;border-radius:5px;background:color-mix(in srgb,var(--dn) 55%,transparent);overflow:hidden}
     .fx-sentbar u{display:block;width:50%;height:100%;background:var(--up);border-radius:5px;transition:width .6s ease}
     .fx-sent-note{margin:6px 0 0;color:var(--mute);font-size:12px}
@@ -2350,6 +2492,9 @@ export function installMemberDashboardTools() {
     @media(max-width:700px){
       .fx-chartwrap{margin-inline:calc(-1 * clamp(18px,3.5vw,44px));border-radius:0;border-left:0;border-right:0;height:clamp(340px,56vh,520px)}
       .fx-list{margin-inline:calc(-1 * clamp(18px,3.5vw,44px));border-radius:0;border-left:0;border-right:0}
+      .fx-stats{grid-template-columns:repeat(3,minmax(0,1fr))}
+      .fx-stat:nth-child(4){border-left:0}
+      .fx-stat:nth-child(n+4){border-top:1px solid var(--line)}
       .fx-input{font-size:18px;padding:12px}
       .fx-buy,.fx-sell{padding:15px;font-size:18px}
       .fx-list-head,.fx-row{grid-template-columns:minmax(0,1fr) 92px 72px;padding:12px 18px}
@@ -2504,12 +2649,12 @@ export function installMemberDashboardTools() {
     root.addEventListener('input', (event) => {
       if (page === 'Screener') drawScreenerRows();
       else if (page === 'Profile') handleProfileInput(event);
-      else if (page === 'Forex') handleForexInput(event);
+      else if (FX_MARKETS[page]) handleForexInput(event);
     });
     root.addEventListener('change', (event) => {
       if (page === 'Screener') drawScreenerRows();
       else if (page === 'Statements and tax') handleStatementsChange(event);
-      else if (page === 'Forex') handleForexChange(event);
+      else if (FX_MARKETS[page]) handleForexChange(event);
       else if (page === 'Profile' && event.target instanceof HTMLInputElement && event.target.id === 'profile-avatar-input') {
         handleProfileAvatar(event.target);
       }
