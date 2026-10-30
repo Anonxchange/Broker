@@ -1119,6 +1119,23 @@ function buildDashboardDocument(
       '["Profile","M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"],["Security and verification","M12 3l8',
     )
     .replaceAll('Sample only', 'Varies by network')
+    .replaceAll('<span class="risk r1">Demo only</span>', '<span class="risk r1">${dep?"Manual review":"Coming soon"}</span>')
+    .replaceAll('Available sample balance', 'Available balance')
+    .replaceAll('This preview changes sample balance only; it does not submit a real transaction.', 'Blockchain transfers cannot be reversed.')
+    .replaceAll('Recent demo activity', 'Recent withdrawals')
+    .replaceAll('Recent demo requests', 'Recent deposit requests')
+    .replaceAll('Submit demo withdrawal', 'Request withdrawal')
+    .replaceAll('Demo request saved on this device', 'Deposit request submitted')
+    .replaceAll('Start another demo request', 'Start another deposit')
+    .replaceAll('Save demo request', 'Submit deposit request')
+    .replaceAll('before saving your demo request', 'before submitting your deposit request')
+    .replaceAll('saved with the local demo request', 'saved with your deposit request')
+    .replaceAll('A quick view of what makes up your sample wallet.', 'A quick view of what makes up your wallet.')
+    .replaceAll('Sample value', 'Value')
+    .replaceAll('This preview has no real receiving address. Do not send funds. The next steps only demonstrate the flow.', 'Send only the exact asset on the exact network shown at the payment step.')
+    .replaceAll('Only use the exact network selected here in a live account. No live address is available in this preview.', 'Only use the exact network selected here.')
+    .replaceAll('Do not send funds. The screenshot is only previewed in this browser and will not be uploaded to the company or reviewed.', 'Attach a clear screenshot or slip of your transfer for review.')
+    .replaceAll('Preview only', 'Pending review')
     .replaceAll('Verification · Tier 2 of 3', 'Identity verification')
     .replaceAll(
       'Tier 1 email and Tier 2 face checks are complete in this sample. Tier 3 requires a government ID showing your current address.',
@@ -1185,7 +1202,7 @@ function buildDashboardDocument(
     )
     .replace(
       /function lg\(t\)\{[\s\S]*?\nfunction renderRail/,
-      'const MARKET_ICONS=Object.create(null),MARKET_STATUS=Object.create(null),MARKET_META=Object.create(null);\nfunction lg(t){const src=MARKET_ICONS[t];if(src)return `<img class="lg" src="${src}" alt="" loading="lazy" style="object-fit:cover;border-radius:50%">`;return `<b class="lg" style="background:var(--brand);color:#fff">${String(t||"").replace(/[^A-Za-z0-9]/g,"").slice(0,3)}</b>`}\nfunction renderRail',
+      'const MARKET_ICONS=Object.create(null),MARKET_STATUS=Object.create(null),MARKET_META=Object.create(null);\nfunction lg(t){const src=MARKET_ICONS[t];const badge=`<b class="lg" style="background:var(--brand);color:#fff">${String(t||"").replace(/[^A-Za-z0-9]/g,"").slice(0,3)}</b>`;if(src)return `<img class="lg" src="${src}" alt="" loading="lazy" referrerpolicy="no-referrer" data-fb="${badge.replace(/"/g,"&quot;")}" onerror="this.outerHTML=this.dataset.fb" style="background:#fff;object-fit:contain;border-radius:50%">`;return badge}\nfunction renderRail',
     )
     .replace(
       /async function loadCrypto\(\)\{[\s\S]*?\nfunction lg/,
@@ -1262,7 +1279,7 @@ function buildDashboardDocument(
             headers:{"Content-Type":"text/plain;charset=UTF-8","Accept":"application/json"},
             body:JSON.stringify({
               symbols:{tickers:instruments.map(item=>item.ticker),query:{types:[]}},
-              columns:["name","close","change","change_abs","volume","open","high","low","currency","description"]
+              columns:["name","close","change","change_abs","volume","open","high","low","currency","description","logoid","base_currency_logoid"]
             })
           });
           if(!response.ok)throw new Error("TradingView returned HTTP "+response.status);
@@ -1271,9 +1288,12 @@ function buildDashboardDocument(
           const bySymbol=new Map(quotes.filter(row=>row&&typeof row.s==="string").map(row=>[row.s,row.d]));
           const numberOrNull=value=>typeof value==="number"&&Number.isFinite(value)?value:null;
           const clean=value=>String(value??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll(String.fromCharCode(34),"&quot;");
+          const safeLogoId=value=>typeof value==="string"&&value.length>0&&value.length<120&&value.split("").every(ch=>"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-./".includes(ch));
           const rows=instruments.flatMap(instrument=>{
             const quote=bySymbol.get(instrument.ticker);
             if(!Array.isArray(quote)||typeof quote[1]!=="number"||!Number.isFinite(quote[1]))return [];
+            const logoId=safeLogoId(quote[10])?quote[10]:safeLogoId(quote[11])?quote[11]:null;
+            if(logoId)MARKET_ICONS[instrument.symbol]="https://s3-symbol-logo.tradingview.com/"+logoId+"--big.svg";
             return [[
               clean(instrument.symbol),
               clean(instrument.name),
