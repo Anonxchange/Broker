@@ -660,6 +660,41 @@ function buildDashboardDocument(
       margin: 5px 0;
       background: var(--line);
     }
+    .profile-dropdown .profile-level {
+      display: grid;
+      gap: 8px;
+      margin-top: 8px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      background: color-mix(in srgb, var(--brand) 6%, transparent);
+    }
+    .profile-level__top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 13px;
+    }
+    .profile-level__top span {
+      color: var(--mute);
+      font-variant-numeric: tabular-nums;
+    }
+    .profile-level__bar {
+      display: block;
+      height: 5px;
+      border-radius: 3px;
+      background: var(--line);
+      overflow: hidden;
+    }
+    .profile-level__bar u {
+      display: block;
+      height: 100%;
+      background: var(--brand);
+      border-radius: 3px;
+    }
+    .profile-level small {
+      color: var(--mute);
+      font-size: 12px;
+    }
     .profile-dropdown__empty {
       margin: 0;
       padding: 14px 10px 10px;
@@ -691,7 +726,7 @@ function buildDashboardDocument(
       profileMenu.id="member-profile-menu";
       profileMenu.setAttribute("role","menu");
       profileMenu.hidden=true;
-      profileMenu.innerHTML='<div class="profile-dropdown__view" data-profile-view="menu"><div class="profile-dropdown__identity"><span class="profile-dropdown__initial" aria-hidden="true">A</span><div><strong>Profile</strong><small>Manage your account</small></div></div><button type="button" role="menuitem" data-profile-action="notifications"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 20a2 2 0 0 0 4 0"/></svg><span>Notifications</span></button><button type="button" role="menuitem" data-profile-action="settings">Account settings</button><button type="button" role="menuitem" data-profile-action="statements">Statements and tax</button><button type="button" role="menuitem" data-profile-action="referral">Referral</button><div class="profile-dropdown__divider"></div><button type="button" role="menuitem" data-profile-action="signout">Sign out</button></div><div class="profile-dropdown__view" data-profile-view="notifications" hidden><button type="button" role="menuitem" data-profile-action="back"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6M9 12h11"/></svg><span>Back to profile menu</span></button><p class="profile-dropdown__empty">No new notifications.</p></div>';
+      profileMenu.innerHTML='<div class="profile-dropdown__view" data-profile-view="menu"><div class="profile-dropdown__identity"><span class="profile-dropdown__initial" aria-hidden="true">A</span><div><strong>Profile</strong><small>Manage your account</small></div></div><button type="button" role="menuitem" data-profile-action="profile">Profile</button><button type="button" role="menuitem" data-profile-action="notifications"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 20a2 2 0 0 0 4 0"/></svg><span>Notifications</span></button><button type="button" role="menuitem" data-profile-action="settings">Security &amp; verification</button><button type="button" role="menuitem" data-profile-action="statements">Statements and tax</button><button type="button" role="menuitem" data-profile-action="referral">Referral</button><div class="profile-dropdown__divider"></div><button type="button" role="menuitem" data-profile-action="signout">Sign out</button></div><div class="profile-dropdown__view" data-profile-view="notifications" hidden><button type="button" role="menuitem" data-profile-action="back"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6M9 12h11"/></svg><span>Back to profile menu</span></button><p class="profile-dropdown__empty">No new notifications.</p></div>';
       const profileInitial=profileMenu.querySelector(".profile-dropdown__initial");
       if(profileInitial&&memberAvatar.textContent.trim())profileInitial.textContent=memberAvatar.textContent.trim();
       const authProfile=window.__AUVRENTHIA_PROFILE__;
@@ -713,7 +748,30 @@ function buildDashboardDocument(
       kycButton.setAttribute("role","menuitem");
       kycButton.dataset.profileAction="kyc";
       kycButton.textContent="Identity verification";
-      profileMenuView.appendChild(kycButton);
+      const levelByStatus={none:0,pending:1,rejected:0,verified:3};
+      const levelCount=levelByStatus[String(authProfile?.kyc_status||"none")]??0;
+      const levelBox=document.createElement("button");
+      levelBox.type="button";
+      levelBox.className="profile-level";
+      levelBox.setAttribute("role","menuitem");
+      levelBox.dataset.profileAction="kyc-open";
+      levelBox.setAttribute("aria-label","Verification level "+levelCount+" of 3. Open verification.");
+      const levelTop=document.createElement("span");
+      levelTop.className="profile-level__top";
+      const levelLabel=document.createElement("b");
+      levelLabel.textContent="Verification level";
+      const levelValue=document.createElement("span");
+      levelValue.textContent=levelCount+" of 3";
+      levelTop.append(levelLabel,levelValue);
+      const levelBar=document.createElement("i");
+      levelBar.className="profile-level__bar";
+      const levelFill=document.createElement("u");
+      levelFill.style.width=Math.round(levelCount/3*100)+"%";
+      levelBar.appendChild(levelFill);
+      const levelNote=document.createElement("small");
+      levelNote.textContent={none:"Not started",pending:"Under review",verified:"Verified",rejected:"Action required"}[String(authProfile?.kyc_status||"none")]||"Not started";
+      levelBox.append(levelTop,levelBar,levelNote);
+      profileMenuView.appendChild(levelBox);
 
       const kycView=document.createElement("div");
       kycView.className="profile-dropdown__view";
@@ -828,7 +886,7 @@ function buildDashboardDocument(
           window.parent.postMessage({type:"auvrenthia-member-logout"},"*");
           return;
         }
-        const destinations={settings:"Security and verification",statements:"Statements and tax",referral:"Referral"};
+        const destinations={profile:"Profile",settings:"Security and verification",statements:"Statements and tax",referral:"Referral"};
         const destination=destinations[action.dataset.profileAction];
         if(destination)document.querySelector('#nav .nav[data-p="'+destination+'"]')?.click();
       });
@@ -887,6 +945,10 @@ function buildDashboardDocument(
   let html = harborDashboardHtml
     .replace(/function renderKyc\(\)\{[^\n]*\}/, kycStatusRenderer)
     .replace('<title>Harbor – Investing</title>', '<title>Auvrenthia Markets</title>')
+    .replace(
+      '["Security and verification","M12 3l8',
+      '["Profile","M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"],["Security and verification","M12 3l8',
+    )
     .replaceAll('Sample only', 'Varies by network')
     .replaceAll('Verification · Tier 2 of 3', 'Identity verification')
     .replaceAll(
