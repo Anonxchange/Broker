@@ -1158,11 +1158,11 @@ function buildDashboardDocument(
     )
     .replace(
       '</head>',
-      `<script>window.__AUVRENTHIA_DASHBOARD_STATE__=${serializeInlineScript(initialState)};window.__AUVRENTHIA_DEPOSIT_METHODS__=${serializeInlineScript(depositMethods)};window.__AUVRENTHIA_PROFILE__=${serializeInlineScript(profile)};</script><script>${marketRequestBridge}</script><style>${wealthHubTypography}</style></head>`,
+      () => `<script>window.__AUVRENTHIA_DASHBOARD_STATE__=${serializeInlineScript(initialState)};window.__AUVRENTHIA_DEPOSIT_METHODS__=${serializeInlineScript(depositMethods)};window.__AUVRENTHIA_PROFILE__=${serializeInlineScript(profile)};</script><script>${marketRequestBridge}</script><style>${wealthHubTypography}</style></head>`,
     )
     .replace(
       '</body>',
-      `<script>try{${profileMenuControl}}catch(error){console.error("Profile menu initialization failed.",error);}try{${headerLogoControl}}catch(error){console.error("Dashboard header initialization failed.",error);}try{(${installMemberDepositMethods.toString()})();}catch(error){console.error("Dashboard action initialization failed.",error);}try{(${installMemberDashboardTools.toString()})();}catch(error){console.error("Dashboard navigation initialization failed.",error);}</script></body>`,
+      () => `<script>try{${profileMenuControl}}catch(error){console.error("Profile menu initialization failed.",error);}try{${headerLogoControl}}catch(error){console.error("Dashboard header initialization failed.",error);}try{(${installMemberDepositMethods.toString()})();}catch(error){console.error("Dashboard action initialization failed.",error);}try{(${installMemberDashboardTools.toString()})();}catch(error){console.error("Dashboard navigation initialization failed.",error);}</script></body>`,
     );
 
   const requiredTransforms = [
