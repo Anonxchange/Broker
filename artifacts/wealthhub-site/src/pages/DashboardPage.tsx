@@ -873,7 +873,19 @@ function buildDashboardDocument(
     syncHeaderLogo();
     new MutationObserver(syncHeaderLogo).observe(dashboardTitle,{childList:true});
   `;
+  const kycStatusRenderer = String.raw`function renderKyc(){
+    const profile=window.__AUVRENTHIA_PROFILE__||{};
+    const states={
+      none:{label:"Not started",detail:"No identity verification request has been submitted.",risk:"r2"},
+      pending:{label:"Under review",detail:"Your verification submission is being reviewed.",risk:"r2"},
+      verified:{label:"Verified",detail:"Your identity verification is complete.",risk:"r1"},
+      rejected:{label:"Action required",detail:"Contact support for the next steps.",risk:"r3"}
+    };
+    const state=states[String(profile.kyc_status||"none")]||states.none;
+    $("#misc").innerHTML='<div class="head"><div><div class="lbl">Account verification</div><div class="bal">Identity verification</div></div><span class="risk '+state.risk+'">'+state.label+'</span></div><div class="mp"><div class="mph"><div><h3>'+state.label+'</h3><small>'+state.detail+'</small></div></div><p class="note">Your identity status is read from your account. Contact support if you need to submit or update documents.</p></div>';
+  }`;
   let html = harborDashboardHtml
+    .replace(/function renderKyc\(\)\{[^\n]*\}/, kycStatusRenderer)
     .replace('<title>Harbor – Investing</title>', '<title>Auvrenthia Markets</title>')
     .replaceAll('Sample only', 'Varies by network')
     .replaceAll('Verification · Tier 2 of 3', 'Identity verification')
@@ -996,7 +1008,11 @@ function buildDashboardDocument(
       };
       const MARKET_SCANNERS={Stocks:"america",ETFs:"america",Crypto:"crypto",Forex:"forex",Commodities:"futures"};
       const MARKET_CACHE=Object.create(null);
+      const MARKET_IN_FLIGHT=Object.create(null);
       async function loadPublic(category){
+        const existingRequest=MARKET_IN_FLIGHT[category];
+        if(existingRequest)return existingRequest;
+        const request=(async()=>{
         const instruments=MARKET_INSTRUMENTS[category];
         if(!instruments)return;
         const cached=MARKET_CACHE[category];
@@ -1058,8 +1074,15 @@ function buildDashboardDocument(
           if(category==="Crypto")LIVE={ok:false,msg:MARKET_STATUS[category]};
         }
         tickRender();renderRail();renderList();if(page===category)renderMkt(category);
+        })();
+        MARKET_IN_FLIGHT[category]=request;
+        try{await request}finally{if(MARKET_IN_FLIGHT[category]===request)delete MARKET_IN_FLIGHT[category]}
       }
       tickRender();`,
+    )
+    .replace(
+      'if(!hasPageContent)return;',
+      "if(!hasPageContent){console.error('Dashboard section is missing a handler.',nextPage);page=nextPage;document.getElementById('title').textContent=nextPage;document.querySelectorAll('.nav').forEach(button=>button.classList.toggle('on',button.dataset.p===nextPage));document.getElementById('dash').hidden=true;document.getElementById('plans').hidden=true;document.getElementById('mkt').hidden=true;const section=document.getElementById('misc');if(section){section.hidden=false;section.innerHTML='<div class=\"mp\"><p class=\"note\">This section could not load. Refresh and try again.</p></div>';}return;}",
     )
     .replace(
       'if(ism)renderMkt(page);if(ms)',
@@ -1087,7 +1110,7 @@ function buildDashboardDocument(
     )
     .replace(
       'tickRender();renderRail();renderList();drawChart();loadCrypto();',
-      'D.Stocks=[];D.ETFs=[];D.Crypto=[];D.Forex=[];D.Commodities=[];tickRender();renderRail();renderList();drawChart();loadCrypto();',
+      'D.Stocks=[];D.ETFs=[];D.Crypto=[];D.Forex=[];D.Commodities=[];D.Agriculture=[];D.Bonds=[];D["Real estate"]=[];MARKET_STATUS.Agriculture="Live market data is not configured for this category.";MARKET_STATUS.Bonds="Live market data is not configured for this category.";MARKET_STATUS["Real estate"]="Live market data is not configured for this category.";tickRender();renderRail();renderList();drawChart();loadCrypto();',
     )
     .replace(
       'const rows=[D.Crypto[0],D.Stocks[1],D.Crypto[1],D.Stocks[0],D.Commodities[0]];',
@@ -1141,6 +1164,31 @@ function buildDashboardDocument(
       '</body>',
       `<script>try{${profileMenuControl}}catch(error){console.error("Profile menu initialization failed.",error);}try{${headerLogoControl}}catch(error){console.error("Dashboard header initialization failed.",error);}try{(${installMemberDepositMethods.toString()})();}catch(error){console.error("Dashboard action initialization failed.",error);}try{(${installMemberDashboardTools.toString()})();}catch(error){console.error("Dashboard navigation initialization failed.",error);}</script></body>`,
     );
+
+  const requiredTransforms = [
+    'window.__AUVRENTHIA_DASHBOARD_STATE__=',
+    'D.Agriculture=[];D.Bonds=[];D["Real estate"]=[];',
+    'MARKET_IN_FLIGHT[category]',
+    'profileTrigger.addEventListener("click"',
+    'Dashboard section is missing a handler.',
+    'Dashboard navigation initialization failed.',
+  ];
+  const missingTransforms = requiredTransforms.filter(
+    (marker) => !html.includes(marker),
+  );
+  if (missingTransforms.length > 0) {
+    throw new Error(
+      `Dashboard source integration is incomplete: ${missingTransforms.join(', ')}`,
+    );
+  }
+  const staleVerificationCopy = [
+    'Tier 2 of 3 · sample',
+    'Complete · sample',
+    'Pending · sample',
+  ].find((copy) => html.includes(copy));
+  if (staleVerificationCopy) {
+    throw new Error('Sample verification statuses cannot be rendered.');
+  }
 
   const darkMode = document.documentElement.classList.contains('dark');
   html = html.replace(
