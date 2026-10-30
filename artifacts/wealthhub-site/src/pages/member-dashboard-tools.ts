@@ -28,7 +28,53 @@ declare function loadCrypto(): Promise<void>;
 declare function save(): void;
 declare function fmt(amount: number): string;
 
+type Row = Record<string, unknown>;
+type ServerData = {
+  profile?: { demo_balance?: number | string; withdrawals_enabled?: boolean; kyc_status?: string } | null;
+  deposits: Row[];
+  withdrawals: Row[];
+  ledger: Row[];
+  plans: Row[];
+  userPlans: Row[];
+  signalPlans: Row[];
+  signals: Row[];
+  signalSubs: Row[];
+  loanProducts: Row[];
+  loans: Row[];
+  settings?: Row | null;
+};
+
 export function installMemberDashboardTools() {
+  // ---- Live data from the real tables (through the React host) -------------
+  let server: ServerData | null = null;
+  const invCall = (op: string, ...args: unknown[]): Promise<any> => {
+    const fn = (window as unknown as { __AUVRENTHIA_INV__?: (op: string, ...args: unknown[]) => Promise<unknown> })
+      .__AUVRENTHIA_INV__;
+    if (typeof fn !== 'function') return Promise.reject(new Error('Account services are not available.'));
+    return fn(op, ...args);
+  };
+  const syncServerViews: Array<() => void> = [];
+  const refreshServer = async (repaintAnyPage = true) => {
+    server = (await invCall('load')) as ServerData;
+    const balance = Number(server?.profile?.demo_balance);
+    if (Number.isFinite(balance)) ST.cash0 = balance;
+    syncServerViews.forEach((sync) => sync());
+    const globalsRef = window as unknown as Record<string, unknown>;
+    // Background refreshes only repaint the Signals page, so forms the member is typing in are never wiped.
+    const repaint = R[page];
+    if (typeof repaint === 'function' && (repaintAnyPage || page === 'Signals')) repaint();
+    if (typeof globalsRef.renderRail === 'function') (globalsRef.renderRail as () => void)();
+    window.dispatchEvent(new CustomEvent('auvrenthia-server-data', { detail: server }));
+  };
+  // Other pages (Withdraw, Plans, Lending) can use these:
+  //   window.__AUVRENTHIA_MEMBER__.server()  -> latest loaded data
+  //   window.__AUVRENTHIA_MEMBER__.call(op, ...args) then .refresh()
+  (window as unknown as Record<string, unknown>).__AUVRENTHIA_MEMBER__ = {
+    server: () => server,
+    call: invCall,
+    refresh: refreshServer,
+  };
+
   const categories = ['Stocks', 'ETFs', 'Crypto', 'Forex', 'Commodities'];
   const root = document.getElementById('misc');
   if (!root) return;
@@ -484,6 +530,36 @@ export function installMemberDashboardTools() {
   };
 
   const statementRecords = (): StatementRecord[] => {
+    if (server) {
+      const stamp = (value: unknown) => {
+        const parsed = Date.parse(String(value ?? ''));
+        return Number.isFinite(parsed) ? parsed : 0;
+      };
+      const fromDeposits = server.deposits.map((row): StatementRecord => {
+        const status = String(row.status || 'pending');
+        return {
+          id: String(row.id),
+          kind: status === 'approved' ? 'deposit' : 'request',
+          t: stamp(row.created_at),
+          asset: String(row.asset ?? ''),
+          network: String(row.network ?? ''),
+          amount: Number(row.amount) || 0,
+          usd: Number(row.usd_amount) || 0,
+          status,
+        };
+      });
+      const fromWithdrawals = server.withdrawals.map((row): StatementRecord => ({
+        id: String(row.id),
+        kind: 'withdrawal',
+        t: stamp(row.created_at),
+        asset: String(row.asset ?? ''),
+        network: String(row.network ?? ''),
+        amount: Number(row.amount) || 0,
+        usd: Number(row.usd_amount) || 0,
+        status: String(row.status || 'pending'),
+      }));
+      return [...fromDeposits, ...fromWithdrawals].sort((first, second) => second.t - first.t);
+    }
     const toRecord = (
       raw: unknown,
       kind: (value: Record<string, unknown>) => StatementKind,
@@ -1694,11 +1770,7 @@ export function installMemberDashboardTools() {
     }
   };
 
-  // ---- Signals (frontend only) -------------------------------------------
-  // Nothing is connected yet. Edit signalPlans for your real prices and
-  // features. Fill signalFeed and set the subscription from your database,
-  // then set SIGNALS_CONNECTED to true once checkout is wired up.
-  const SIGNALS_CONNECTED = false;
+  // ---- Signals (plans, feed and subscription come from the real tables) ---
   type SignalPlan = {
     id: string;
     name: string;
@@ -1719,35 +1791,41 @@ export function installMemberDashboardTools() {
     postedAt: number;
     status: 'active' | 'hit' | 'stopped' | 'closed';
   };
-  const signalPlans: SignalPlan[] = [
-    {
-      id: 'starter',
-      name: 'Starter',
-      blurb: 'Core market signals for getting started.',
-      price: 49,
-      period: 'per month',
-      features: ['Crypto and forex signals', 'Entry, take-profit and stop-loss levels', 'Email delivery'],
-    },
-    {
-      id: 'pro',
-      name: 'Pro',
-      blurb: 'More markets and faster delivery.',
-      price: 99,
-      period: 'per month',
-      badge: 'Most popular',
-      features: ['Everything in Starter', 'Stocks, ETFs and commodities', 'Instant dashboard alerts', 'Signal history and results'],
-    },
-    {
-      id: 'vip',
-      name: 'VIP',
-      blurb: 'Full coverage with priority support.',
-      price: 199,
-      period: 'per month',
-      features: ['Everything in Pro', 'Priority support', 'Market notes from our analysts', 'Early access to new products'],
-    },
-  ];
-  const signalFeed: SignalItem[] = [];
-  const signalSubscription = null as { planId: string; renewsAt: number } | null;
+  let signalPlans: SignalPlan[] = [];
+  let signalFeed: SignalItem[] = [];
+  let signalSubscription = null as { planId: string; renewsAt: number } | null;
+  syncServerViews.push(() => {
+    if (!server) return;
+    signalPlans = server.signalPlans.map((row) => {
+      const days = Number(row.period_days) || 30;
+      return {
+        id: String(row.id),
+        name: String(row.name ?? ''),
+        blurb: String(row.blurb ?? ''),
+        price: Number(row.price) || 0,
+        period: days === 30 ? 'per month' : `per ${days} days`,
+        badge: row.badge ? String(row.badge) : undefined,
+        features: Array.isArray(row.features) ? row.features.map((feature) => String(feature)) : [],
+      };
+    });
+    signalFeed = server.signals.map((row) => ({
+      id: String(row.id),
+      category: String(row.category ?? ''),
+      symbol: String(row.symbol ?? ''),
+      direction: row.direction === 'sell' ? 'sell' : 'buy',
+      entry: Number(row.entry) || 0,
+      takeProfit: Number(row.take_profit) || 0,
+      stopLoss: Number(row.stop_loss) || 0,
+      postedAt: Date.parse(String(row.posted_at ?? '')) || 0,
+      status: (['active', 'hit', 'stopped', 'closed'].includes(String(row.status)) ? row.status : 'active') as SignalItem['status'],
+    }));
+    const live = server.signalSubs
+      .filter((row) => row.status === 'active' && Date.parse(String(row.expires_at ?? '')) > Date.now())
+      .sort((first, second) => Date.parse(String(second.expires_at)) - Date.parse(String(first.expires_at)))[0];
+    signalSubscription = live
+      ? { planId: String(live.plan_id), renewsAt: Date.parse(String(live.expires_at)) }
+      : null;
+  });
 
   const signalStatus: Record<SignalItem['status'], [string, string]> = {
     active: ['Active', 'r2'],
@@ -1768,7 +1846,7 @@ export function installMemberDashboardTools() {
           <ul class="signal-features">${plan.features.map((feature) => `<li>${escapeHtml(feature)}</li>`).join('')}</ul>
           <button class="btn${owned ? ' alt' : ''}" type="button" data-tool-action="signal-subscribe" data-plan="${escapeHtml(plan.id)}"${owned ? ' disabled aria-disabled="true"' : ''}>${owned ? 'Current plan' : subscribed ? 'Switch plan' : 'Subscribe'}</button></div>`;
       })
-      .join('');
+      .join('') || '<div class="help-empty"><b>No signal plans are available</b><p>Plans will appear here when they are published.</p></div>';
 
     const feedRows = signalFeed.length
       ? signalFeed
@@ -1801,15 +1879,31 @@ export function installMemberDashboardTools() {
   };
 
   const handleSignalAction = (button: HTMLElement) => {
-    const notice = root.querySelector<HTMLElement>('#signal-notice');
-    if (!SIGNALS_CONNECTED) {
+    const showNotice = (message: string) => {
+      const notice = root.querySelector<HTMLElement>('#signal-notice');
       if (notice) {
-        notice.textContent = 'Subscriptions are not available yet. Nothing was charged.';
+        notice.textContent = message;
         notice.hidden = false;
       }
+    };
+    const plan = signalPlans.find((candidate) => candidate.id === button.dataset.plan);
+    if (!plan || !server) {
+      showNotice('Subscriptions are not available right now. Nothing was charged.');
       return;
     }
-    void button;
+    const ok = window.confirm(
+      `Subscribe to ${plan.name} for ${fmt(plan.price)} ${plan.period}? This amount is taken from your available balance.`,
+    );
+    if (!ok) return;
+    button.setAttribute('disabled', 'true');
+    showNotice('Processing your subscription…');
+    void invCall('subscribeSignals', plan.id)
+      .then(() => refreshServer())
+      .then(() => showNotice(`You are subscribed to ${plan.name}.`))
+      .catch((error: unknown) => {
+        button.removeAttribute('disabled');
+        showNotice(error instanceof Error ? error.message : 'The subscription could not be completed. Nothing was charged.');
+      });
   };
 
   const newsImage = (article: Record<string, unknown>) => {
@@ -3646,4 +3740,18 @@ export function installMemberDashboardTools() {
 
   if (!Array.isArray(ST.watchlist)) ST.watchlist = [];
   if (!Array.isArray(ST.priceAlerts)) ST.priceAlerts = [];
+
+  // Load the real data now, then keep it fresh (balance, approvals, new signals).
+  const reload = (repaintAnyPage = false) => {
+    void refreshServer(repaintAnyPage).catch((error: unknown) => {
+      console.error('Member data could not be loaded.', error);
+    });
+  };
+  reload(true);
+  window.setInterval(() => {
+    if (!document.hidden) reload();
+  }, 60000);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) reload();
+  });
 }
