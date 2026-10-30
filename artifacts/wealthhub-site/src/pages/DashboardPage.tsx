@@ -7,12 +7,14 @@ import {
   supabaseImageBucket,
   type AppProfile,
 } from '../lib/supabase';
+import { useAuth } from '../lib/auth-context';
 import { SessionLoading } from '@/components/session-loading';
 import { installMemberDashboardTools } from './member-dashboard-tools';
 import './dashboard-page.css';
 
 type DashboardPageProps = {
   onLogout: () => Promise<void>;
+  onSignOutEverywhere: () => Promise<void>;
   profile: AppProfile;
   userId: string;
 };
@@ -1451,9 +1453,11 @@ function buildDashboardDocument(
 
 export default function DashboardPage({
   onLogout,
+  onSignOutEverywhere,
   profile,
   userId,
 }: DashboardPageProps) {
+  const { changePassword } = useAuth();
   const frameRef = useRef<HTMLIFrameElement>(null);
   const frameDocumentRef = useRef<Document | null>(null);
   const frameLogoutHandlerRef = useRef<((event: MouseEvent) => void) | null>(
@@ -1595,8 +1599,72 @@ export default function DashboardPage({
   useLayoutEffect(() => {
     function handleMessage(event: MessageEvent) {
       if (
-        event.source !== frameRef.current?.contentWindow
+        event.source !== frameRef.current?.contentWindow ||
+        event.origin !== window.location.origin
       ) {
+        return;
+      }
+
+      if (event.data?.type === 'auvrenthia-profile-auth-request') {
+        const requestId = event.data.requestId;
+        const action = event.data.action;
+        if (
+          typeof requestId !== 'string' ||
+          requestId.length > 100 ||
+          typeof action !== 'string'
+        ) {
+          return;
+        }
+        const respond = (ok: boolean, message: string) => {
+          frameRef.current?.contentWindow?.postMessage(
+            {
+              type: 'auvrenthia-profile-auth-response',
+              requestId,
+              ok,
+              message,
+            },
+            window.location.origin,
+          );
+        };
+
+        if (action === 'change-password') {
+          const password = event.data.password;
+          if (
+            typeof password !== 'string' ||
+            password.length < 8 ||
+            password.length > 72
+          ) {
+            respond(false, 'Use a password between 8 and 72 characters.');
+            return;
+          }
+          void changePassword(password)
+            .then(() => respond(true, 'Password changed successfully.'))
+            .catch((error: unknown) =>
+              respond(
+                false,
+                error instanceof Error
+                  ? error.message
+                  : 'The password could not be changed. Please try again.',
+              ),
+            );
+          return;
+        }
+
+        if (action === 'sign-out-all-devices') {
+          void onSignOutEverywhere()
+            .then(() => respond(true, 'You have been signed out on all devices.'))
+            .catch((error: unknown) =>
+              respond(
+                false,
+                error instanceof Error
+                  ? error.message
+                  : 'Sign-out failed. Your sessions are still active.',
+              ),
+            );
+          return;
+        }
+
+        respond(false, 'That account action is not supported.');
         return;
       }
 
@@ -1827,7 +1895,14 @@ export default function DashboardPage({
     }
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [depositMethods, onLogout, profile.demo_balance, userId]);
+  }, [
+    changePassword,
+    depositMethods,
+    onLogout,
+    onSignOutEverywhere,
+    profile.demo_balance,
+    userId,
+  ]);
 
   if (loadError) {
     return (
