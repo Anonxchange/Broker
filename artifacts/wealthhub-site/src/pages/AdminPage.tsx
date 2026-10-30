@@ -149,8 +149,12 @@ function toAdminDepositMethod(row: {
   };
 }
 
-function roleFromAdminLabel(role: unknown): AppProfile['role'] {
-  return STAFF_ROLE_KEYS[String(role)] || 'support';
+// Only roles the database accepts. Anything else returns null so callers skip it
+// instead of silently turning a person into 'support' (or failing the whole save).
+const DB_STAFF_ROLES = ['owner', 'finance', 'support'] as const;
+function roleFromAdminLabel(role: unknown): AppProfile['role'] | null {
+  const key = STAFF_ROLE_KEYS[String(role)];
+  return key && (DB_STAFF_ROLES as readonly string[]).includes(key) ? key : null;
 }
 
 function mergePaymentRecords(
@@ -956,17 +960,21 @@ export default function AdminPage({
       if (adminUser.id === user?.id) changedOwnProfile = true;
     }
 
-    const desiredTeam = new Map(
-      team.map((member) => [
-        member.email.trim().toLowerCase(),
-        member.on ? roleFromAdminLabel(member.role) : 'member',
-      ]),
-    );
-    for (const staffProfile of profilesRef.current.filter(
-      (row) => row.role !== 'member',
-    )) {
-      const role =
-        desiredTeam.get(staffProfile.email.toLowerCase()) || 'member';
+    // Team sync is skipped when the console sent no team list, so an empty or
+    // missing list can never demote every staff account (including yours).
+    const desiredTeam = new Map<string, AppProfile['role']>();
+    for (const member of team) {
+      const role = member.on ? roleFromAdminLabel(member.role) : 'member';
+      if (role) desiredTeam.set(String(member.email).trim().toLowerCase(), role);
+    }
+    for (const staffProfile of team.length === 0
+      ? []
+      : profilesRef.current.filter((row) => row.role !== 'member')) {
+      // Never change the signed-in user's own role from here, and never demote
+      // someone just because they are missing from the list.
+      if (staffProfile.id === user?.id) continue;
+      const role = desiredTeam.get(staffProfile.email.toLowerCase());
+      if (!role) continue;
       if (role === staffProfile.role) continue;
       const { error } = await supabase.rpc('admin_set_profile_role', {
         p_user_id: staffProfile.id,
@@ -976,7 +984,6 @@ export default function AdminPage({
       profilesRef.current = profilesRef.current.map((row) =>
         row.id === staffProfile.id ? { ...row, role } : row,
       );
-      if (staffProfile.id === user?.id) changedOwnProfile = true;
     }
     for (const [email, role] of desiredTeam) {
       const memberProfile = profilesRef.current.find(
@@ -987,6 +994,7 @@ export default function AdminPage({
           'The person must create an account before receiving a staff role.',
         );
       }
+      if (memberProfile.id === user?.id) continue;
       if (memberProfile.role === role || role === 'member') continue;
       const { error } = await supabase.rpc('admin_set_profile_role', {
         p_user_id: memberProfile.id,
