@@ -2081,6 +2081,10 @@ export function installMemberDashboardTools() {
         { symbol: 'TRX', name: 'TRON', ticker: 'BINANCE:TRXUSDT', history: 'tron' },
         { symbol: 'AVAX', name: 'Avalanche', ticker: 'BINANCE:AVAXUSDT', history: 'avalanche-2' },
         { symbol: 'LINK', name: 'Chainlink', ticker: 'BINANCE:LINKUSDT', history: 'chainlink' },
+        { symbol: 'UNI', name: 'Uniswap', ticker: 'BINANCE:UNIUSDT', history: 'uniswap' },
+        { symbol: 'ARB', name: 'Arbitrum', ticker: 'BINANCE:ARBUSDT', history: 'arbitrum' },
+        { symbol: 'SHIB', name: 'Shiba Inu', ticker: 'BINANCE:SHIBUSDT', history: 'shiba-inu' },
+        { symbol: 'USDC', name: 'USD Coin', ticker: 'BINANCE:USDCUSDT', history: 'usd-coin' },
       ],
     },
     Commodities: {
@@ -2100,6 +2104,61 @@ export function installMemberDashboardTools() {
         { symbol: 'HG', name: 'Copper futures', ticker: 'COMEX:HG1!', history: 'HG' },
       ],
     },
+    Agriculture: {
+      chip: 'Grains & softs · futures',
+      scanner: 'futures',
+      category: 'agriculture',
+      listTitle: 'Agriculture',
+      note: 'Agriculture quotes are front-month futures from TradingView and may be delayed. Grains are quoted in US cents per bushel and softs in US cents per lb (cocoa in US dollars per tonne). Prices follow exchange hours and can pause overnight and on weekends.',
+      decimals: (price) => (price < 10 ? 3 : 2),
+      pairs: [
+        { symbol: 'ZW', name: 'Wheat futures', ticker: 'CBOT:ZW1!', history: 'ZW' },
+        { symbol: 'ZC', name: 'Corn futures', ticker: 'CBOT:ZC1!', history: 'ZC' },
+        { symbol: 'ZS', name: 'Soybean futures', ticker: 'CBOT:ZS1!', history: 'ZS' },
+        { symbol: 'KC', name: 'Coffee futures', ticker: 'ICEUS:KC1!', history: 'KC' },
+        { symbol: 'CC', name: 'Cocoa futures', ticker: 'ICEUS:CC1!', history: 'CC' },
+        { symbol: 'SB', name: 'Sugar #11 futures', ticker: 'ICEUS:SB1!', history: 'SB' },
+        { symbol: 'CT', name: 'Cotton futures', ticker: 'ICEUS:CT1!', history: 'CT' },
+      ],
+    },
+    Bonds: {
+      chip: 'Treasury & corporate bond funds · market hours',
+      scanner: 'america',
+      category: 'bonds',
+      listTitle: 'Bonds',
+      note: 'TradingView does not carry individual bond yields in the live feed, so bond quotes are the prices of US-listed bond ETFs and may be delayed. A rising price means yields are falling. US markets trade 9:30 to 16:00 New York time on weekdays.',
+      decimals: () => 2,
+      pairs: [
+        { symbol: 'IEF', name: 'US Treasury 7-10 year (iShares)', ticker: 'NASDAQ:IEF', history: 'IEF' },
+        { symbol: 'TLT', name: 'US Treasury 20+ year (iShares)', ticker: 'NASDAQ:TLT', history: 'TLT' },
+        { symbol: 'SHY', name: 'US Treasury 1-3 year (iShares)', ticker: 'NASDAQ:SHY', history: 'SHY' },
+        { symbol: 'BIL', name: 'Treasury bills, 1-3 month (SPDR)', ticker: 'AMEX:BIL', history: 'BIL' },
+        { symbol: 'SGOV', name: 'Treasury bills, 0-3 month (iShares)', ticker: 'AMEX:SGOV', history: 'SGOV' },
+        { symbol: 'LQD', name: 'Investment-grade corporates (iShares)', ticker: 'AMEX:LQD', history: 'LQD' },
+        { symbol: 'AGG', name: 'US aggregate bonds (iShares)', ticker: 'AMEX:AGG', history: 'AGG' },
+        { symbol: 'BND', name: 'Total bond market (Vanguard)', ticker: 'NASDAQ:BND', history: 'BND' },
+        { symbol: 'HYG', name: 'High-yield corporates (iShares)', ticker: 'AMEX:HYG', history: 'HYG' },
+        { symbol: 'TIP', name: 'Inflation-protected Treasuries (iShares)', ticker: 'AMEX:TIP', history: 'TIP' },
+      ],
+    },
+    'Real estate': {
+      chip: 'Listed property funds · market hours',
+      scanner: 'america',
+      category: 'realestate',
+      listTitle: 'Real estate',
+      note: 'TradingView only covers publicly listed property, so these are US-listed REITs and real estate ETFs, and quotes may be delayed. Private property funds are not on TradingView and have no live price. US markets trade 9:30 to 16:00 New York time on weekdays.',
+      decimals: () => 2,
+      pairs: [
+        { symbol: 'VNQ', name: 'Vanguard Real Estate ETF', ticker: 'AMEX:VNQ', history: 'VNQ' },
+        { symbol: 'IYR', name: 'iShares US Real Estate ETF', ticker: 'AMEX:IYR', history: 'IYR' },
+        { symbol: 'XLRE', name: 'Real Estate Select Sector SPDR', ticker: 'AMEX:XLRE', history: 'XLRE' },
+        { symbol: 'PLD', name: 'Prologis (logistics)', ticker: 'NYSE:PLD', history: 'PLD' },
+        { symbol: 'O', name: 'Realty Income (rental income)', ticker: 'NYSE:O', history: 'O' },
+        { symbol: 'AMT', name: 'American Tower', ticker: 'NYSE:AMT', history: 'AMT' },
+        { symbol: 'EQIX', name: 'Equinix (data centres)', ticker: 'NASDAQ:EQIX', history: 'EQIX' },
+        { symbol: 'SPG', name: 'Simon Property Group (malls)', ticker: 'NYSE:SPG', history: 'SPG' },
+      ],
+    },
   };
   const FX_TIMERS = [5, 15, 30, 60, 180, 300];
   const FX_AMOUNTS = [1, 5, 10, 25, 50, 100];
@@ -2116,7 +2175,18 @@ export function installMemberDashboardTools() {
   };
   const fx = {
     market: 'Forex',
-    symbols: { Stocks: 'AAPL', ETFs: 'VOO', Forex: 'EUR/USD', Crypto: 'BTC', Commodities: 'XAU' } as Record<string, string>,
+    symbols: {
+      Stocks: 'AAPL',
+      ETFs: 'VOO',
+      Forex: 'EUR/USD',
+      Crypto: 'BTC',
+      Commodities: 'XAU',
+      Agriculture: 'ZW',
+      Bonds: 'IEF',
+      'Real estate': 'VNQ',
+    } as Record<string, string>,
+    logos: {} as Record<string, { main?: string; base?: string; quote?: string }>,
+    logoState: {} as Record<string, 'loading' | 'done'>,
     style: 'line' as 'line' | 'candles',
     ticks: [] as FxTick[],
     candles: [] as FxCandle[],
@@ -2603,11 +2673,71 @@ export function installMemberDashboardTools() {
     void pollForex(run);
   };
 
-  const fxBadges = (symbol: string, small = false) => {
+  // Real TradingView symbol images (flags, coin and company logos). Text
+  // badges stay underneath, so a missing or blocked image falls back cleanly.
+  const TV_LOGO_HOST = 'https://s3-symbol-logo.tradingview.com/';
+  const fxLogoUrl = (id: unknown) =>
+    typeof id === 'string' && /^[A-Za-z0-9_\-./]{1,80}$/.test(id) && !id.includes('..')
+      ? `${TV_LOGO_HOST}${id}.svg`
+      : null;
+
+  const fxBadges = (symbol: string, small = false, ticker = '') => {
     const parts = symbol.includes('/') ? symbol.split('/') : [symbol.slice(0, 4)];
-    return `<span class="fx-flags${small ? ' sm' : ''}${parts.length === 1 ? ' one' : ''}" aria-hidden="true">${parts
-      .map((part) => `<i>${escapeHtml(part)}</i>`)
+    const logo = ticker ? fx.logos[ticker] : undefined;
+    const urls = symbol.includes('/') ? [logo?.base, logo?.quote] : [logo?.main || logo?.base];
+    return `<span class="fx-flags${small ? ' sm' : ''}${parts.length === 1 ? ' one' : ''}" data-fx-badge="${escapeHtml(symbol)}" data-fx-ticker="${escapeHtml(ticker)}" data-fx-small="${small ? '1' : ''}" aria-hidden="true">${parts
+      .map((part, index) => {
+        const url = urls[index];
+        const image = url ? `<img src="${escapeHtml(url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : '';
+        return `<i>${escapeHtml(part)}${image}</i>`;
+      })
       .join('')}</span>`;
+  };
+
+  // One small request per market for symbol image ids. It is separate from
+  // the price poll, so a failure here can never affect quotes.
+  const loadForexLogos = async (market: string) => {
+    const config = FX_MARKETS[market];
+    if (!config || fx.logoState[market]) return;
+    fx.logoState[market] = 'loading';
+    const attempts = [['logoid', 'base-currency-logoid', 'currency-logoid'], ['logoid']];
+    for (const columns of attempts) {
+      try {
+        const response = await fetch(`https://scanner.tradingview.com/${config.scanner}/scan`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=UTF-8', Accept: 'application/json' },
+          body: JSON.stringify({ symbols: { tickers: config.pairs.map((pair) => pair.ticker), query: { types: [] } }, columns }),
+        });
+        if (!response.ok) continue;
+        const payload = (await response.json()) as { data?: { s?: string; d?: unknown[] }[] };
+        const holder = window as unknown as { TV_LOGOS?: Record<string, string> };
+        if (!holder.TV_LOGOS) holder.TV_LOGOS = {};
+        const shared = holder.TV_LOGOS;
+        (Array.isArray(payload.data) ? payload.data : []).forEach((row) => {
+          const pair = config.pairs.find((item) => item.ticker === row.s);
+          if (!pair) return;
+          const main = fxLogoUrl(row.d?.[0]) || undefined;
+          const base = fxLogoUrl(row.d?.[1]) || undefined;
+          const quote = fxLogoUrl(row.d?.[2]) || undefined;
+          fx.logos[pair.ticker] = { main, base, quote };
+          const single = main || base;
+          if (single) shared[pair.symbol] = single;
+        });
+        fx.logoState[market] = 'done';
+        root.querySelectorAll<HTMLElement>('[data-fx-badge]').forEach((badge) => {
+          const ticker = badge.dataset.fxTicker || '';
+          if (ticker) badge.outerHTML = fxBadges(badge.dataset.fxBadge || '', badge.dataset.fxSmall === '1', ticker);
+        });
+        // Refresh other lists that show asset logos.
+        if (page === 'Screener') drawScreenerRows();
+        else if (page === 'Watchlist') renderWatchlist();
+        else if (page === 'Portfolio' && tab === 'Default') renderList();
+        return;
+      } catch {
+        // Try the smaller column set, then fall back to text badges.
+      }
+    }
+    delete fx.logoState[market];
   };
 
   const resetForexSeries = () => {
@@ -2631,7 +2761,7 @@ export function installMemberDashboardTools() {
     const rows = config.pairs
       .map(
         (pair, index) =>
-          `<button class="fx-row${pair.symbol === symbol ? ' on' : ''}" type="button" data-tool-action="fx-pair" data-symbol="${escapeHtml(pair.symbol)}"><span class="fx-row-name">${fxBadges(pair.symbol, true)}<span><b>${escapeHtml(pair.symbol)}</b><small>${escapeHtml(pair.name)}</small></span></span><span class="fx-row-num" id="fx-p-${index}">—</span><span class="fx-row-num" id="fx-c-${index}">—</span></button>`,
+          `<button class="fx-row${pair.symbol === symbol ? ' on' : ''}" type="button" data-tool-action="fx-pair" data-symbol="${escapeHtml(pair.symbol)}"><span class="fx-row-name">${fxBadges(pair.symbol, true, pair.ticker)}<span><b>${escapeHtml(pair.symbol)}</b><small>${escapeHtml(pair.name)}</small></span></span><span class="fx-row-num" id="fx-p-${index}">—</span><span class="fx-row-num" id="fx-c-${index}">—</span></button>`,
       )
       .join('');
     const tabs = Object.keys(FX_MARKETS)
@@ -2647,7 +2777,7 @@ export function installMemberDashboardTools() {
       <div class="fx-main">
         <div class="fx-left">
           <div class="fx-bar">
-            <label class="fx-pair">${fxBadges(symbol)}<select id="fx-pair" aria-label="Choose asset">${pairOptions}</select></label>
+            <label class="fx-pair">${fxBadges(symbol, false, (config.pairs.find((pair) => pair.symbol === symbol) || config.pairs[0]).ticker)}<select id="fx-pair" aria-label="Choose asset">${pairOptions}</select></label>
             <div class="fx-exp"><small>Expiration time</small><b id="fx-exp">--:--:--</b></div>
           </div>
           <div class="fx-chartwrap">
@@ -2692,6 +2822,7 @@ export function installMemberDashboardTools() {
     updateForexPayout();
     updateForexList();
     startForex();
+    void loadForexLogos(fx.market);
   };
 
   const handleForexAction = (action: string, button: HTMLElement) => {
@@ -2783,6 +2914,11 @@ export function installMemberDashboardTools() {
     true,
   );
 
+  // Prefetch symbol images for every market so lists elsewhere get them too.
+  Object.keys(FX_MARKETS).forEach((name, index) => {
+    setTimeout(() => void loadForexLogos(name), 1200 + index * 700);
+  });
+
   const forexStyle = document.createElement('style');
   forexStyle.textContent = `
     .fx{max-width:760px;margin:0 auto}
@@ -2799,6 +2935,8 @@ export function installMemberDashboardTools() {
     .fx-pair:focus-within{box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 25%,transparent)}
     .fx-pair::after{content:"▾";position:absolute;right:13px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--ink)}
     .fx-flags{display:flex;flex:none}
+    .fx-flags i{position:relative;overflow:hidden}
+    .fx-flags i img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#fff}
     .fx-flags i{display:grid;place-items:center;width:32px;height:32px;border-radius:50%;border:2px solid var(--bg);background:var(--brand);color:#fff;font-style:normal;font-size:10px;font-weight:800}
     .fx-flags i+i{margin-left:-11px;background:var(--ink);color:var(--bg)}
     .fx-flags.one i{background:linear-gradient(135deg,var(--brand),color-mix(in srgb,var(--brand) 55%,var(--ink)));font-size:9px}
