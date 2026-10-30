@@ -19,7 +19,8 @@ declare const ST: {
   depositRequests?: unknown[];
   [key: string]: unknown;
 };
-declare const page: string;
+declare let page: string;
+declare function closeMenu(): void;
 declare function loadCrypto(): Promise<void>;
 declare function save(): void;
 declare function fmt(amount: number): string;
@@ -1653,566 +1654,540 @@ export function installMemberDashboardTools() {
     })();
   };
 
-  // ---- Lending ------------------------------------------------------------
-  // Frontend only until LENDING_CONNECTED is true. Rates, fees and the total
-  // repayable amount are never shown here because they are set per application
-  // by your lending team. Once the backend exists:
-  //   1. fill lendingApplications from the database (shape: LendingApplication),
-  //   2. implement sendLendingRequest (post to the parent page, insert a row for
-  //      the signed-in user, resolve when saved, throw on error),
-  //   3. set LENDING_CONNECTED to true.
-  // Approval status must come from the server, never from member-editable state.
-  const LENDING_CONNECTED = false;
-
-  type LendingStatus = 'submitted' | 'in_review' | 'approved' | 'declined' | 'withdrawn';
-  type LendingApplication = {
-    id: string;
-    amount: number;
-    termMonths: number;
-    purpose: string;
-    status: LendingStatus;
-    createdAt: number;
-    decisionNote?: string;
-  };
-  type LendingRequestInput = {
-    amount: number;
-    termMonths: number;
-    purpose: string;
-    notes: string;
-  };
-
-  // Set these to the limits your lending team has approved.
-  const LENDING_LIMITS = { min: 500, max: 250000 };
-  const LENDING_TERMS = [3, 6, 12, 24, 36];
-  const LENDING_PURPOSES = [
-    'Working capital',
-    'Business expansion',
-    'Personal expenses',
-    'Education',
-    'Property',
-    'Other',
+  // ---- Forex terminal (live quotes) -------------------------------------
+  // The chart is fed only by real TradingView quotes (polled every few
+  // seconds) on top of recent history from the market-data function. No
+  // price movement is simulated. Order placement is NOT connected: set
+  // TRADING_CONNECTED to true and fill FX_PAYOUT_PERCENT once a trading
+  // backend exists; until then Buy / Sell only show a notice.
+  const TRADING_CONNECTED = false;
+  const FX_PAYOUT_PERCENT: number | null = null;
+  const FX_PAIRS = [
+    { symbol: 'EUR/USD', ticker: 'FX_IDC:EURUSD' },
+    { symbol: 'GBP/USD', ticker: 'FX_IDC:GBPUSD' },
+    { symbol: 'USD/JPY', ticker: 'FX_IDC:USDJPY' },
+    { symbol: 'AUD/USD', ticker: 'FX_IDC:AUDUSD' },
+    { symbol: 'USD/CAD', ticker: 'FX_IDC:USDCAD' },
+    { symbol: 'USD/CHF', ticker: 'FX_IDC:USDCHF' },
+    { symbol: 'USD/CNY', ticker: 'FX_IDC:USDCNY' },
+    { symbol: 'USD/NGN', ticker: 'FX_IDC:USDNGN' },
   ];
+  const FX_TIMERS = [5, 15, 30, 60, 180, 300];
+  const FX_AMOUNTS = [1, 5, 10, 25, 50, 100];
 
-  // Filled from the database later. Shape: LendingApplication.
-  const lendingApplications: LendingApplication[] = [];
-
-  const lendingStatus: Record<LendingStatus, [string, string]> = {
-    submitted: ['Submitted', 'r2'],
-    in_review: ['In review', 'r2'],
-    approved: ['Approved', 'r1'],
-    declined: ['Declined', 'r3'],
-    withdrawn: ['Withdrawn', 'security-badge-muted'],
+  type FxTick = { t: number; p: number };
+  const fx = {
+    symbol: 'EUR/USD',
+    ticks: [] as FxTick[],
+    timerIndex: 2,
+    amount: 1,
+    run: 0,
+    raf: 0,
+    pollTimer: 0 as ReturnType<typeof setTimeout> | 0,
+    status: 'Connecting to live quotes…',
+    lastSecond: 0,
+    colors: null as null | { at: number; values: Record<string, string> },
   };
 
-  const memberKycStatus = () => {
-    const profile = (window as unknown as { __AUVRENTHIA_PROFILE__?: { kyc_status?: unknown } })
-      .__AUVRENTHIA_PROFILE__;
-    return String(profile?.kyc_status ?? 'none');
+  const fxTime = (totalSeconds: number) => {
+    const pad = (value: number) => String(value).padStart(2, '0');
+    return `${pad(Math.floor(totalSeconds / 3600))}:${pad(Math.floor((totalSeconds % 3600) / 60))}:${pad(totalSeconds % 60)}`;
+  };
+  const fxClock = (date: Date) => date.toLocaleTimeString([], { hour12: false });
+  const fxDecimals = (price: number) => (price > 500 ? 2 : price > 50 ? 3 : 5);
+  const fxPrice = (price: number) => price.toFixed(fxDecimals(price));
+  const fxOffset = () => {
+    const minutes = -new Date().getTimezoneOffset();
+    const sign = minutes >= 0 ? '+' : '−';
+    const abs = Math.abs(minutes);
+    const hours = Math.floor(abs / 60);
+    const rest = abs % 60;
+    return `UTC${sign}${hours}${rest ? ':' + String(rest).padStart(2, '0') : ''}`;
   };
 
-  const lendingEligibility = (): { ok: boolean; label: string; tone: string; detail: string } => {
-    switch (memberKycStatus()) {
-      case 'verified':
-        return {
-          ok: true,
-          label: 'Eligible to apply',
-          tone: 'r1',
-          detail: 'Your identity verification is complete.',
-        };
-      case 'pending':
-        return {
-          ok: false,
-          label: 'Verification in review',
-          tone: 'r2',
-          detail: 'You can apply once your identity verification has been approved.',
-        };
-      case 'rejected':
-        return {
-          ok: false,
-          label: 'Action required',
-          tone: 'r3',
-          detail: 'Your identity verification needs attention before you can apply.',
-        };
-      default:
-        return {
-          ok: false,
-          label: 'Verification required',
-          tone: 'security-badge-muted',
-          detail: 'Complete identity verification before you can apply for lending.',
-        };
+  const stopForex = () => {
+    fx.run += 1;
+    if (fx.raf) cancelAnimationFrame(fx.raf);
+    if (fx.pollTimer) clearTimeout(fx.pollTimer);
+    fx.raf = 0;
+    fx.pollTimer = 0;
+  };
+
+  const fxColors = () => {
+    const now = Date.now();
+    if (fx.colors && now - fx.colors.at < 500) return fx.colors.values;
+    const style = getComputedStyle(document.documentElement);
+    const read = (name: string, fallback: string) => style.getPropertyValue(name).trim() || fallback;
+    const values = {
+      ink: read('--ink', '#0A1230'),
+      mute: read('--mute', '#62708F'),
+      line: read('--line', '#D6DDEC'),
+      brand: read('--brand', '#1F4FFF'),
+      up: read('--up', '#0B7F52'),
+      dn: read('--dn', '#C8344A'),
+      bg: read('--bg', '#F3F5FA'),
+    };
+    fx.colors = { at: now, values };
+    return values;
+  };
+
+  const updateForexPayout = () => {
+    const payout = root.querySelector<HTMLElement>('#fx-payout');
+    const percent = root.querySelector<HTMLElement>('#fx-percent');
+    const profit = root.querySelector<HTMLElement>('#fx-profit');
+    if (!payout || !percent || !profit) return;
+    if (FX_PAYOUT_PERCENT === null || !(fx.amount > 0)) {
+      payout.textContent = '$—';
+      percent.textContent = '—';
+      profit.textContent = '+$—';
+      return;
     }
+    const gain = (fx.amount * FX_PAYOUT_PERCENT) / 100;
+    payout.textContent = `$${(fx.amount + gain).toFixed(2)}`;
+    percent.textContent = `+${FX_PAYOUT_PERCENT}%`;
+    profit.textContent = `+$${gain.toFixed(2)}`;
   };
 
-  const formatMoney = (amount: number) => {
+  const drawForex = (canvas: HTMLCanvasElement) => {
+    const wrap = canvas.parentElement;
+    if (!wrap) return;
+    const dpr = window.devicePixelRatio || 1;
+    const w = wrap.clientWidth;
+    const h = wrap.clientHeight;
+    if (!w || !h) return;
+    if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+      canvas.style.width = `${w}px`;
+      canvas.style.height = `${h}px`;
+    }
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    const c = fxColors();
+    const font = 'Ppmori, Arial, sans-serif';
+
+    const now = Date.now();
+    const second = Math.floor(now / 1000);
+    const timer = FX_TIMERS[fx.timerIndex];
+    if (second !== fx.lastSecond) {
+      fx.lastSecond = second;
+      const stamp = root.querySelector<HTMLElement>('#fx-stamp');
+      if (stamp) stamp.textContent = `${fxClock(new Date(now))} ${fxOffset()}`;
+      const expiry = root.querySelector<HTMLElement>('#fx-exp');
+      if (expiry) expiry.textContent = fxClock(new Date(now + timer * 1000));
+      const recent = fx.ticks.filter((tick) => tick.t >= now - 60_000);
+      let upMoves = 0;
+      let downMoves = 0;
+      for (let index = 1; index < recent.length; index += 1) {
+        const diff = recent[index].p - recent[index - 1].p;
+        if (diff > 0) upMoves += 1;
+        else if (diff < 0) downMoves += 1;
+      }
+      const total = upMoves + downMoves;
+      const share = total >= 3 ? Math.round((upMoves / total) * 100) : null;
+      const upLabel = root.querySelector<HTMLElement>('#fx-up');
+      const downLabel = root.querySelector<HTMLElement>('#fx-dn');
+      const fill = root.querySelector<HTMLElement>('#fx-sentfill');
+      if (upLabel) upLabel.textContent = share === null ? '—' : `${share}%`;
+      if (downLabel) downLabel.textContent = share === null ? '—' : `${100 - share}%`;
+      if (fill) fill.style.width = `${share === null ? 50 : share}%`;
+    }
+
+    const future = Math.max(20, timer * 1.2);
+    const past = Math.max(90, future * 2.4);
+    const tMin = now - past * 1000;
+    const span = (past + future) * 1000;
+    const x = (t: number) => ((t - tMin) / span) * w;
+    const yTop = 44;
+    const yBottom = h - 30;
+
+    const visible = fx.ticks.filter((tick) => tick.t >= tMin - 120_000);
+    if (!visible.length) {
+      ctx.fillStyle = c.mute;
+      ctx.font = `14px ${font}`;
+      ctx.fillText('Waiting for live quotes…', 16, h / 2);
+      return;
+    }
+    const last = visible[visible.length - 1].p;
+    const pts = [...visible, { t: now, p: last }];
+    const inWindow = pts.filter((pt) => pt.t >= tMin);
+    const basis = inWindow.length ? inWindow : pts.slice(-2);
+    let lo = Math.min(...basis.map((pt) => pt.p));
+    let hi = Math.max(...basis.map((pt) => pt.p));
+    const pad = Math.max((hi - lo) * 0.2, last * 0.00003);
+    lo -= pad;
+    hi += pad;
+    const y = (p: number) => yBottom - ((p - lo) / (hi - lo || 1)) * (yBottom - yTop);
+
+    // grid
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = c.line;
+    ctx.fillStyle = c.mute;
+    ctx.font = `13px ${font}`;
+    ctx.textAlign = 'right';
+    for (let line = 0; line <= 4; line += 1) {
+      const price = lo + ((hi - lo) * line) / 4;
+      const gy = Math.round(y(price)) + 0.5;
+      ctx.globalAlpha = 0.7;
+      ctx.beginPath();
+      ctx.moveTo(0, gy);
+      ctx.lineTo(w, gy);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.fillText(fxPrice(price), w - 10, gy - 6);
+    }
+    const steps = [5, 10, 15, 30, 60, 120, 300];
+    const step = steps.find((value) => (past + future) / value <= 8) || 300;
+    ctx.textAlign = 'center';
+    for (let t = Math.ceil(tMin / (step * 1000)) * step * 1000; t < tMin + span; t += step * 1000) {
+      const gx = Math.round(x(t)) + 0.5;
+      ctx.globalAlpha = 0.5;
+      ctx.beginPath();
+      ctx.moveTo(gx, 0);
+      ctx.lineTo(gx, yBottom);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      const date = new Date(t);
+      const label = step < 60 ? fxClock(date) : fxClock(date).slice(0, 5);
+      ctx.fillText(label, Math.min(Math.max(gx, 34), w - 34), h - 9);
+    }
+
+    // area + line
+    const expiryX = x(now + timer * 1000);
+    const nowX = x(now);
+    ctx.globalAlpha = 0.07;
+    ctx.fillStyle = c.brand;
+    ctx.fillRect(nowX, yTop - 20, Math.max(0, expiryX - nowX), yBottom - yTop + 20);
+    ctx.globalAlpha = 1;
+
+    const gradient = ctx.createLinearGradient(0, yTop, 0, yBottom);
+    gradient.addColorStop(0, c.brand);
+    gradient.addColorStop(1, c.brand);
+    ctx.beginPath();
+    pts.forEach((pt, index) => {
+      if (index === 0) ctx.moveTo(x(pt.t), y(pt.p));
+      else ctx.lineTo(x(pt.t), y(pt.p));
+    });
+    ctx.lineTo(nowX, yBottom);
+    ctx.lineTo(x(pts[0].t), yBottom);
+    ctx.closePath();
+    ctx.globalAlpha = 0.18;
+    ctx.fillStyle = gradient;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    ctx.beginPath();
+    pts.forEach((pt, index) => {
+      if (index === 0) ctx.moveTo(x(pt.t), y(pt.p));
+      else ctx.lineTo(x(pt.t), y(pt.p));
+    });
+    ctx.strokeStyle = c.brand;
+    ctx.lineWidth = 2.2;
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+
+    // expiration line + flag
+    ctx.strokeStyle = c.brand;
+    ctx.globalAlpha = 0.7;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(expiryX, 8);
+    ctx.lineTo(expiryX, yBottom);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = c.ink;
+    ctx.beginPath();
+    ctx.moveTo(expiryX, 8);
+    ctx.lineTo(expiryX + 22, 8);
+    ctx.lineTo(expiryX + 14, 17);
+    ctx.lineTo(expiryX + 22, 26);
+    ctx.lineTo(expiryX, 26);
+    ctx.closePath();
+    ctx.fill();
+
+    // current price line, tag and pulsing dot
+    const py = y(last);
+    ctx.setLineDash([5, 5]);
+    ctx.strokeStyle = c.brand;
+    ctx.globalAlpha = 0.65;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, py);
+    ctx.lineTo(w, py);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+
+    const label = fxPrice(last);
+    ctx.font = `700 15px ${font}`;
+    const tagWidth = ctx.measureText(label).width + 22;
+    const tagY = Math.min(Math.max(py - 15, 4), h - 38);
+    ctx.fillStyle = c.brand;
+    ctx.beginPath();
+    ctx.roundRect(w - tagWidth - 6, tagY, tagWidth, 30, 6);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.fillText(label, w - tagWidth / 2 - 6, tagY + 20);
+
+    const pulse = 9 + 3 * Math.sin(now / 280);
+    ctx.globalAlpha = 0.28;
+    ctx.fillStyle = c.brand;
+    ctx.beginPath();
+    ctx.arc(nowX, py, pulse, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.beginPath();
+    ctx.arc(nowX, py, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = c.bg;
+    ctx.stroke();
+  };
+
+  const loadForexHistory = async (run: number) => {
+    const bridge = (
+      window as unknown as {
+        __AUVRENTHIA_MARKET_REQUEST__?: (
+          payload: Record<string, unknown>,
+        ) => Promise<{ candles?: unknown }>;
+      }
+    ).__AUVRENTHIA_MARKET_REQUEST__;
+    if (!bridge) return;
+    const symbol = fx.symbol;
     try {
-      return fmt(amount);
+      const result = await bridge({
+        action: 'history',
+        category: 'forex',
+        symbol: symbol.replace('/', '-'),
+        days: 1,
+      });
+      if (run !== fx.run || symbol !== fx.symbol) return;
+      const candles = Array.isArray(result?.candles) ? result.candles : [];
+      const rows: FxTick[] = candles.flatMap((candle: unknown) => {
+        if (!candle || typeof candle !== 'object') return [];
+        const value = candle as Record<string, unknown>;
+        const time = Number(value.time);
+        const close = Number(value.close);
+        return Number.isFinite(time) && Number.isFinite(close) && close > 0
+          ? [{ t: time * 1000, p: close }]
+          : [];
+      });
+      rows.sort((a, b) => a.t - b.t);
+      const newest = rows.length ? rows[rows.length - 1].t : 0;
+      fx.ticks = [...rows.slice(-300), ...fx.ticks.filter((tick) => tick.t > newest)];
     } catch {
-      return `$${amount.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+      // History is optional; live quotes alone still draw the chart.
     }
   };
 
-  const lendingRowsMarkup = () =>
-    lendingApplications.length
-      ? lendingApplications
-          .map((application) => {
-            const [label, tone] = lendingStatus[application.status] || lendingStatus.submitted;
-            const note = application.decisionNote
-              ? `<small>${escapeHtml(application.decisionNote)}</small>`
-              : '';
-            return `<div class="lending-row"><div class="lending-row-main"><b>${escapeHtml(formatMoney(application.amount))} · ${escapeHtml(application.termMonths)} months</b><small>${escapeHtml(application.id)} · ${escapeHtml(application.purpose)} · ${escapeHtml(new Date(application.createdAt).toLocaleDateString())}</small>${note}</div><span class="risk ${tone}">${label}</span></div>`;
-          })
-          .join('')
-      : '<div class="help-empty"><b>No applications yet</b><p>Applications you submit will appear here with their current status.</p></div>';
-
-  const renderLending = () => {
-    const eligibility = lendingEligibility();
-    const openCount = lendingApplications.filter(
-      (application) => application.status === 'submitted' || application.status === 'in_review',
-    ).length;
-    const approvedCount = lendingApplications.filter(
-      (application) => application.status === 'approved',
-    ).length;
-    const canApply = LENDING_CONNECTED && eligibility.ok;
-
-    let banner = '';
-    if (!LENDING_CONNECTED) {
-      banner =
-        '<div class="lending-banner" role="status"><b>Applications are not open yet</b><p>Lending is not available on your account at the moment. You can review how it works below.</p></div>';
-    } else if (!eligibility.ok) {
-      banner = `<div class="lending-banner" role="status"><b>${escapeHtml(eligibility.label)}</b><p>${escapeHtml(eligibility.detail)}</p><button class="btn alt" type="button" data-tool-action="navigate" data-destination="Security and verification">Open verification</button></div>`;
-    }
-
-    const termOptions = LENDING_TERMS.map(
-      (months) => `<option value="${months}"${months === 12 ? ' selected' : ''}>${months} months</option>`,
-    ).join('');
-    const purposeOptions = LENDING_PURPOSES.map(
-      (purpose) => `<option value="${escapeHtml(purpose)}">${escapeHtml(purpose)}</option>`,
-    ).join('');
-    const disabled = canApply ? '' : ' disabled aria-disabled="true"';
-
-    root.innerHTML = `<div class="head"><div><div class="lbl">Borrowing</div><div class="bal">Lending</div></div><span class="risk ${eligibility.tone}">${escapeHtml(eligibility.label)}</span></div>
-      <p class="note">Apply for a lending facility and track each application from submission to decision. The rate, fees and total repayable amount are confirmed in writing before you accept any offer.</p>
-      ${banner}
-
-      <div class="lending-stats">
-        <div class="lending-stat"><small>Open applications</small><b>${openCount}</b></div>
-        <div class="lending-stat"><small>Approved facilities</small><b>${approvedCount}</b></div>
-        <div class="lending-stat"><small>Requested amount</small><b>${escapeHtml(formatMoney(LENDING_LIMITS.min))} – ${escapeHtml(formatMoney(LENDING_LIMITS.max))}</b></div>
-      </div>
-
-      <h2 class="sec">Request a facility</h2>
-      <div class="mp" id="lending-form-card">
-        <div class="mph"><div><h3>Application details</h3><small>Tell us how much you would like to borrow and for how long.</small></div></div>
-        <fieldset class="lending-fieldset"${disabled}>
-          <div class="help-grid">
-            <div><label class="fl" for="lending-amount">Amount (USD)</label><input class="help-input" id="lending-amount" type="number" inputmode="decimal" min="${LENDING_LIMITS.min}" max="${LENDING_LIMITS.max}" step="0.01" placeholder="${LENDING_LIMITS.min}"></div>
-            <div><label class="fl" for="lending-term">Term</label><select class="sel" id="lending-term">${termOptions}</select></div>
-            <div><label class="fl" for="lending-purpose">Purpose</label><select class="sel" id="lending-purpose">${purposeOptions}</select></div>
-          </div>
-          <label class="fl" for="lending-notes">Additional information <span class="help-optional">(optional)</span></label>
-          <textarea class="help-input help-textarea" id="lending-notes" rows="4" maxlength="1000" placeholder="Anything that will help us assess your application."></textarea>
-          <label class="lending-ack" for="lending-ack"><input type="checkbox" id="lending-ack"><span>I understand that submitting an application does not guarantee approval, and that I will receive the full terms to review before I accept.</span></label>
-        </fieldset>
-        <div class="err" id="lending-error" role="alert"></div>
-        <div class="help-success" id="lending-success" role="status" hidden></div>
-        <div class="deposit-actions"><button class="btn" type="button" data-tool-action="submit-lending"${disabled}>Submit application</button></div>
-      </div>
-
-      <h2 class="sec">Your applications</h2>
-      <div class="mp" id="lending-list">${lendingRowsMarkup()}</div>
-
-      <h2 class="sec">How lending works</h2>
-      <ol class="lending-steps">
-        <li><b>Verify your identity</b><span>Lending is available to members with completed identity verification.</span></li>
-        <li><b>Submit an application</b><span>Choose an amount, term and purpose. Our team reviews every application individually.</span></li>
-        <li><b>Review your offer</b><span>If approved, you will see the rate, fees, repayment schedule and total repayable amount before you decide.</span></li>
-        <li><b>Accept and manage repayments</b><span>Funds are released only after you accept. Repayments and balances are shown here once a facility is active.</span></li>
-      </ol>
-
-      <h2 class="sec">Important information</h2>
-      <ul class="lending-notes">
-        <li>Borrowing involves risk. You are responsible for repaying the full amount, including any interest and fees.</li>
-        <li>Late or missed repayments can result in additional charges and may affect your account and future access to lending.</li>
-        <li>Lending is subject to eligibility and approval, and may not be available in all regions.</li>
-        <li>Do not borrow money you cannot afford to repay. Do not use borrowed funds for speculation you cannot afford to lose.</li>
-      </ul>`;
-  };
-
-  const submitLendingRequest = async (button: HTMLElement) => {
-    const field = (id: string) =>
-      root.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`#${id}`);
-    const errorBox = root.querySelector<HTMLElement>('#lending-error');
-    const successBox = root.querySelector<HTMLElement>('#lending-success');
-    const fail = (message: string) => {
-      if (successBox) successBox.hidden = true;
-      if (errorBox) errorBox.textContent = message;
-    };
-    if (errorBox) errorBox.textContent = '';
-    if (successBox) successBox.hidden = true;
-
-    if (!lendingEligibility().ok) {
-      fail('Complete identity verification before you apply for lending.');
-      return;
-    }
-    const amount = Number((field('lending-amount')?.value || '').trim());
-    const termMonths = Number(field('lending-term')?.value);
-    const purpose = (field('lending-purpose')?.value || '').trim();
-    const notes = (field('lending-notes')?.value || '').trim();
-    const acknowledged = (field('lending-ack') as HTMLInputElement | null)?.checked === true;
-
-    if (!Number.isFinite(amount) || amount < LENDING_LIMITS.min || amount > LENDING_LIMITS.max) {
-      fail(
-        `Enter an amount between ${formatMoney(LENDING_LIMITS.min)} and ${formatMoney(LENDING_LIMITS.max)}.`,
-      );
-      return;
-    }
-    if (Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-6) {
-      fail('Enter an amount with no more than two decimal places.');
-      return;
-    }
-    if (!LENDING_TERMS.includes(termMonths)) {
-      fail('Choose a term.');
-      return;
-    }
-    if (!LENDING_PURPOSES.includes(purpose)) {
-      fail('Choose a purpose.');
-      return;
-    }
-    if (notes.length > 1000) {
-      fail('Additional information must be 1,000 characters or fewer.');
-      return;
-    }
-    if (!acknowledged) {
-      fail('Please confirm that you understand the terms above before submitting.');
-      return;
-    }
-
-    button.setAttribute('disabled', 'true');
+  const pollForex = async (run: number) => {
+    if (run !== fx.run) return;
+    const pair = FX_PAIRS.find((item) => item.symbol === fx.symbol) || FX_PAIRS[0];
     try {
-      await sendLendingRequest({ amount, termMonths, purpose, notes });
-      ['lending-amount', 'lending-notes'].forEach((id) => {
-        const input = field(id);
-        if (input) input.value = '';
+      const response = await fetch('https://scanner.tradingview.com/forex/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8', Accept: 'application/json' },
+        body: JSON.stringify({
+          symbols: { tickers: [pair.ticker], query: { types: [] } },
+          columns: ['close'],
+        }),
       });
-      const ack = field('lending-ack') as HTMLInputElement | null;
-      if (ack) ack.checked = false;
-      if (successBox) {
-        successBox.textContent =
-          'Your application was submitted. We will notify you when there is a decision.';
-        successBox.hidden = false;
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const payload = (await response.json()) as { data?: { d?: unknown[] }[] };
+      const price = payload.data?.[0]?.d?.[0];
+      if (run !== fx.run) return;
+      if (typeof price !== 'number' || !Number.isFinite(price) || price <= 0) {
+        throw new Error('No quote returned');
       }
-    } catch (error) {
-      fail(
-        error instanceof Error
-          ? error.message
-          : 'We could not submit your application. Please try again.',
-      );
-    } finally {
-      button.removeAttribute('disabled');
+      fx.ticks.push({ t: Date.now(), p: price });
+      if (fx.ticks.length > 900) fx.ticks.splice(0, fx.ticks.length - 900);
+      fx.status = `TradingView quote · updated ${fxClock(new Date())}`;
+    } catch {
+      if (run !== fx.run) return;
+      fx.status = 'Live quotes are temporarily unavailable. Retrying…';
     }
+    const status = root.querySelector<HTMLElement>('#fx-status');
+    if (status) status.textContent = fx.status;
+    fx.pollTimer = setTimeout(() => void pollForex(run), 2500);
   };
 
-  // TODO(supabase): send the application to the parent page with postMessage
-  // (same pattern as the deposit request), then insert it into a lending
-  // applications table under the signed-in user's id with status 'submitted'.
-  // Validate the limits again on the server. Resolve when saved, throw on error.
-  const sendLendingRequest = async (_request: LendingRequestInput) => {
-    if (!LENDING_CONNECTED) {
-      throw new Error(
-        'Lending applications are not open yet, so nothing was submitted. Please try again later.',
-      );
-    }
-  };
-
-  // ---- Crypto trading modes -------------------------------------------------
-  // Adds a mode strip to the Crypto page: Spot (the existing chart and order
-  // ticket), AI trading bot, Copy trading and Recurring buys. Frontend only
-  // until TRADE_MODES_CONNECTED is true. To wire a mode, implement
-  // sendTradeModeRequest (post to the parent page, save for the signed-in user,
-  // resolve when saved, throw on error), then set the flag. Add or edit a mode
-  // by changing TRADE_MODES only; the panel, form and validation are generated.
-  // Never show results, rankings or returns here unless they come from the server.
-  const TRADE_MODES_CONNECTED = false;
-
-  type TradeModeId = 'bot' | 'copy' | 'recurring';
-  type TradeField = {
-    id: string;
-    label: string;
-    type: 'select' | 'number';
-    options?: string[];
-    min?: number;
-    max?: number;
-    step?: number;
-    placeholder?: string;
-    hint?: string;
-  };
-  type TradeMode = {
-    id: TradeModeId;
-    tab: string;
-    eyebrow: string;
-    title: string;
-    blurb: string;
-    fields: TradeField[];
-    action: string;
-    notes: string[];
-    stats: string[];
-  };
-
-  // Set the limits to the ones your trading team has approved.
-  const TRADE_MODES: TradeMode[] = [
-    {
-      id: 'bot',
-      tab: 'AI trading bot',
-      eyebrow: 'Automated trading',
-      title: 'AI trading bot',
-      blurb:
-        'Choose a risk level, a budget and a loss limit. The bot only trades inside the limits you set.',
-      fields: [
-        { id: 'asset', label: 'Trading pair', type: 'select' },
-        { id: 'risk', label: 'Risk level', type: 'select', options: ['Low', 'Medium', 'High'] },
-        { id: 'amount', label: 'Amount to allocate (USD)', type: 'number', min: 50, max: 100000, step: 0.01, placeholder: '50' },
-        { id: 'stop', label: 'Stop-loss (%)', type: 'number', min: 1, max: 50, step: 0.1, placeholder: '10', hint: 'The bot stops if losses reach this level.' },
-        { id: 'target', label: 'Take-profit (%)', type: 'number', min: 1, max: 500, step: 0.1, placeholder: '20' },
-      ],
-      action: 'Start bot',
-      notes: [
-        'Automated trading carries risk. You can lose some or all of the funds you allocate.',
-        'Results are not guaranteed, and past performance does not indicate future results.',
-        'Only allocate funds you can afford to lose, and set a stop-loss you are comfortable with.',
-      ],
-      stats: ['Bot status', 'Allocated', 'Profit and loss'],
-    },
-    {
-      id: 'copy',
-      tab: 'Copy trading',
-      eyebrow: 'Follow a trader',
-      title: 'Copy trading',
-      blurb: 'Follow an approved trader and mirror their trades with a budget and loss limit you control.',
-      fields: [
-        { id: 'trader', label: 'Trader', type: 'select', options: [] },
-        { id: 'amount', label: 'Amount to allocate (USD)', type: 'number', min: 50, max: 100000, step: 0.01, placeholder: '50' },
-        { id: 'stop', label: 'Stop-loss (%)', type: 'number', min: 1, max: 50, step: 0.1, placeholder: '10' },
-      ],
-      action: 'Start copying',
-      notes: [
-        'Copied trades can lose money. A trader\u2019s past results do not guarantee future results.',
-        'Only allocate funds you can afford to lose.',
-      ],
-      stats: ['Copy status', 'Allocated', 'Profit and loss'],
-    },
-    {
-      id: 'recurring',
-      tab: 'Recurring buys',
-      eyebrow: 'Scheduled purchases',
-      title: 'Recurring buys',
-      blurb: 'Buy a fixed amount of a crypto asset on a schedule, so you do not have to time the market.',
-      fields: [
-        { id: 'asset', label: 'Asset', type: 'select' },
-        { id: 'amount', label: 'Amount per purchase (USD)', type: 'number', min: 10, max: 100000, step: 0.01, placeholder: '10' },
-        { id: 'frequency', label: 'Frequency', type: 'select', options: ['Daily', 'Weekly', 'Monthly'] },
-      ],
-      action: 'Start schedule',
-      notes: [
-        'Prices change between purchases, and the value of your holdings can fall as well as rise.',
-        'Each purchase uses your available balance.',
-      ],
-      stats: ['Schedule status', 'Total bought', 'Next purchase'],
-    },
-  ];
-
-  // TODO: connect. Send the request to the parent page with postMessage (same
-  // pattern as the deposit request), save it under the signed-in user's id,
-  // validate again on the server, then resolve. Throw an Error on failure.
-  const sendTradeModeRequest = async (
-    _mode: TradeModeId,
-    _values: Record<string, string | number>,
-  ) => {
-    if (!TRADE_MODES_CONNECTED) {
-      throw new Error('This feature is not available yet, so nothing was started.');
-    }
-  };
-
-  const installCryptoModes = () => {
-    const win = window as unknown as {
-      renderMkt?: (category: string) => void;
-      __cryptoModesInstalled?: boolean;
-    };
-    const originalRenderMkt = win.renderMkt;
-    if (typeof originalRenderMkt !== 'function' || win.__cryptoModesInstalled) return;
-    win.__cryptoModesInstalled = true;
-
-    let activeMode = 'spot';
-    const panels: Record<string, HTMLElement> = {};
-
-    const cryptoSymbols = () => {
-      const rows = (D.Crypto || []) as unknown[][];
-      const symbols = rows.map((row) => String(row[0])).filter(Boolean);
-      return symbols.length ? symbols : ['BTC', 'ETH'];
-    };
-
-    const fieldMarkup = (mode: TradeMode, field: TradeField) => {
-      const id = `tm-${mode.id}-${field.id}`;
-      const hint = field.hint ? `<div class="hint">${escapeHtml(field.hint)}</div>` : '';
-      if (field.type === 'select') {
-        const options = field.options ?? cryptoSymbols();
-        const markup = options.length
-          ? options.map((option) => `<option value="${escapeHtml(option)}">${escapeHtml(option)}</option>`).join('')
-          : '<option value="">None available yet</option>';
-        return `<div><label class="fl" for="${id}">${escapeHtml(field.label)}</label><select class="sel" id="${id}" data-field="${field.id}">${markup}</select>${hint}</div>`;
-      }
-      return `<div><label class="fl" for="${id}">${escapeHtml(field.label)}</label><input class="help-input" id="${id}" data-field="${field.id}" type="number" inputmode="decimal" min="${field.min}" max="${field.max}" step="${field.step}" placeholder="${escapeHtml(field.placeholder ?? '')}">${hint}</div>`;
-    };
-
-    const buildPanel = (mode: TradeMode) => {
-      const disabled = TRADE_MODES_CONNECTED ? '' : ' disabled aria-disabled="true"';
-      const badge = TRADE_MODES_CONNECTED
-        ? ''
-        : '<span class="risk security-badge-muted">Not available yet</span>';
-      const banner = TRADE_MODES_CONNECTED
-        ? ''
-        : `<div class="tm-banner" role="status"><b>${escapeHtml(mode.title)} is not open yet</b><p>You can review how it works below. Nothing can be started until it is enabled for your account.</p></div>`;
-      const stats = mode.stats
-        .map((label) => `<div class="tm-stat"><small>${escapeHtml(label)}</small><b>\u2014</b></div>`)
-        .join('');
-      const notes = mode.notes.map((note) => `<li>${escapeHtml(note)}</li>`).join('');
-      const panel = document.createElement('div');
-      panel.className = 'tm-panel';
-      panel.dataset.mode = mode.id;
-      panel.innerHTML = `<div class="head"><div><div class="lbl">${escapeHtml(mode.eyebrow)}</div><div class="bal tm-title">${escapeHtml(mode.title)}</div></div>${badge}</div>
-        <p class="note">${escapeHtml(mode.blurb)}</p>
-        ${banner}
-        <div class="tm-stats">${stats}</div>
-        <div class="mp">
-          <div class="mph"><div><h3>Set up</h3><small>Review each setting before you start.</small></div></div>
-          <fieldset class="tm-fieldset"${disabled}>
-            <div class="help-grid">${mode.fields.map((field) => fieldMarkup(mode, field)).join('')}</div>
-            <label class="tm-ack" for="tm-${mode.id}-ack"><input type="checkbox" id="tm-${mode.id}-ack"><span>I understand this involves risk and I may lose the funds I allocate.</span></label>
-          </fieldset>
-          <div class="err" data-role="error" role="alert"></div>
-          <div class="help-success" data-role="success" role="status" hidden></div>
-          <div class="deposit-actions"><button class="btn" type="button" data-trade-submit="${mode.id}"${disabled}>${escapeHtml(mode.action)}</button></div>
-        </div>
-        <h2 class="sec">Activity</h2>
-        <div class="mp"><div class="help-empty"><b>No activity yet</b><p>Orders and results will appear here once you start.</p></div></div>
-        <h2 class="sec">Important information</h2>
-        <ul class="tm-notes">${notes}</ul>`;
-
-      panel.addEventListener('click', (event) => {
-        const target = event.target;
-        if (!(target instanceof Element)) return;
-        const button = target.closest<HTMLButtonElement>('[data-trade-submit]');
-        if (!button) return;
-        void submitMode(mode, panel, button);
-      });
-      return panel;
-    };
-
-    const submitMode = async (mode: TradeMode, panel: HTMLElement, button: HTMLButtonElement) => {
-      const errorBox = panel.querySelector<HTMLElement>('[data-role="error"]');
-      const successBox = panel.querySelector<HTMLElement>('[data-role="success"]');
-      const fail = (message: string) => {
-        if (successBox) successBox.hidden = true;
-        if (errorBox) errorBox.textContent = message;
-      };
-      if (errorBox) errorBox.textContent = '';
-      if (successBox) successBox.hidden = true;
-
-      const values: Record<string, string | number> = {};
-      for (const field of mode.fields) {
-        const input = panel.querySelector<HTMLInputElement | HTMLSelectElement>(`[data-field="${field.id}"]`);
-        const raw = (input?.value || '').trim();
-        if (field.type === 'select') {
-          const allowed = field.options ?? cryptoSymbols();
-          if (!allowed.includes(raw)) {
-            fail(`Choose a value for \u201c${field.label}\u201d.`);
-            return;
-          }
-          values[field.id] = raw;
-        } else {
-          const number = Number(raw);
-          if (!raw || !Number.isFinite(number) || number < (field.min ?? 0) || number > (field.max ?? Infinity)) {
-            fail(`Enter a value for \u201c${field.label}\u201d between ${field.min} and ${field.max}.`);
-            return;
-          }
-          values[field.id] = number;
-        }
-      }
-      if (!panel.querySelector<HTMLInputElement>(`#tm-${mode.id}-ack`)?.checked) {
-        fail('Please confirm that you understand the risks before you start.');
+  const startForex = () => {
+    stopForex();
+    const run = fx.run;
+    const frame = () => {
+      if (run !== fx.run) return;
+      const canvas = root.querySelector<HTMLCanvasElement>('#fx-canvas');
+      if (!canvas || !canvas.isConnected || page !== 'Forex') {
+        stopForex();
         return;
       }
-
-      button.setAttribute('disabled', 'true');
-      try {
-        await sendTradeModeRequest(mode.id, values);
-        if (successBox) {
-          successBox.textContent = 'Your request was submitted.';
-          successBox.hidden = false;
-        }
-      } catch (error) {
-        fail(error instanceof Error ? error.message : 'We could not complete that request. Please try again.');
-      } finally {
-        button.removeAttribute('disabled');
-      }
+      drawForex(canvas);
+      fx.raf = requestAnimationFrame(frame);
     };
-
-    const showMode = (id: string, rebuild: boolean) => {
-      activeMode = id;
-      const mkt = document.getElementById('mkt');
-      const spot = document.getElementById('crypto-spot');
-      const host = document.getElementById('crypto-panel');
-      if (!mkt || !spot || !host) return;
-      mkt.querySelectorAll<HTMLElement>('#crypto-modes [data-mode]').forEach((tab) => {
-        const on = tab.dataset.mode === id;
-        tab.classList.toggle('on', on);
-        tab.setAttribute('aria-selected', String(on));
-      });
-      spot.hidden = id !== 'spot';
-      host.hidden = id === 'spot';
-      host.replaceChildren();
-      const mode = TRADE_MODES.find((candidate) => candidate.id === id);
-      if (!mode) return;
-      if (rebuild || !panels[id]) panels[id] = buildPanel(mode);
-      host.append(panels[id]);
-    };
-
-    const decorate = () => {
-      const mkt = document.getElementById('mkt');
-      if (!mkt || mkt.querySelector('#crypto-modes')) return;
-      const head = mkt.querySelector(':scope > .head');
-      if (!head) return;
-      const spot = document.createElement('div');
-      spot.id = 'crypto-spot';
-      while (head.nextSibling) spot.appendChild(head.nextSibling);
-      const tabs = document.createElement('div');
-      tabs.id = 'crypto-modes';
-      tabs.className = 'tabs';
-      tabs.setAttribute('role', 'tablist');
-      tabs.setAttribute('aria-label', 'Crypto trading modes');
-      tabs.innerHTML = [{ id: 'spot', tab: 'Spot trading' }, ...TRADE_MODES]
-        .map(
-          (mode) =>
-            `<button class="tab" type="button" role="tab" data-mode="${mode.id}">${escapeHtml(mode.tab)}</button>`,
-        )
-        .join('');
-      tabs.addEventListener('click', (event) => {
-        const target = event.target;
-        if (!(target instanceof Element)) return;
-        const tab = target.closest<HTMLElement>('[data-mode]');
-        if (tab?.dataset.mode) showMode(tab.dataset.mode, true);
-      });
-      const host = document.createElement('div');
-      host.id = 'crypto-panel';
-      head.after(tabs);
-      mkt.append(spot, host);
-      showMode(activeMode, false);
-    };
-
-    win.renderMkt = function renderMktWithTradeModes(category: string) {
-      originalRenderMkt(category);
-      if (category === 'Crypto') decorate();
-    };
+    fx.raf = requestAnimationFrame(frame);
+    void loadForexHistory(run);
+    void pollForex(run);
   };
+
+  const renderForex = () => {
+    const [base, quote] = fx.symbol.split('/');
+    const pairOptions = FX_PAIRS.map(
+      (pair) =>
+        `<option value="${escapeHtml(pair.symbol)}"${pair.symbol === fx.symbol ? ' selected' : ''}>${escapeHtml(pair.symbol)}</option>`,
+    ).join('');
+    const arrow = (path: string) =>
+      `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${path}"/></svg>`;
+    root.innerHTML = `<div class="fx">
+      <div class="fx-bar">
+        <label class="fx-pair"><span class="fx-flags" aria-hidden="true"><i>${escapeHtml(base)}</i><i>${escapeHtml(quote)}</i></span><span class="visually-hidden fx-sr">Currency pair</span><select id="fx-pair" aria-label="Currency pair">${pairOptions}</select></label>
+        <div class="fx-exp"><small>Expiration time</small><b id="fx-exp">--:--:--</b></div>
+      </div>
+      <div class="fx-chartwrap"><canvas id="fx-canvas" aria-label="Live ${escapeHtml(fx.symbol)} price chart"></canvas><div class="fx-stamp" id="fx-stamp"></div></div>
+      <div class="fx-sent" aria-label="Recent price direction">
+        <span class="up" id="fx-up">—</span>
+        <div class="fx-sentbar"><u id="fx-sentfill"></u></div>
+        <span class="dn" id="fx-dn">—</span>
+      </div>
+      <p class="fx-sent-note">Share of rising vs falling quotes over the last minute.</p>
+      <div class="fx-panel">
+        <div class="fx-fields">
+          <div><span class="fx-label">Time</span><div class="fx-field"><div class="fx-input" id="fx-time">${fxTime(FX_TIMERS[fx.timerIndex])}</div><button class="fx-iconbtn" type="button" data-tool-action="fx-time" aria-label="Change expiration time"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></button></div></div>
+          <div><label class="fx-label" for="fx-amount">Amount</label><div class="fx-field"><input class="fx-input" id="fx-amount" type="number" inputmode="decimal" min="0" step="any" value="${fx.amount}"><button class="fx-iconbtn" type="button" data-tool-action="fx-amount" aria-label="Change amount"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M14.5 9.2c-.4-.8-1.3-1.2-2.5-1.2-1.4 0-2.4.7-2.4 1.8 0 2.7 5 1.2 5 3.9 0 1.1-1.1 1.8-2.6 1.8-1.2 0-2.2-.5-2.6-1.4M12 6.5V8m0 8v1.5"/></svg></button></div></div>
+        </div>
+        <div class="fx-payout"><div><span>Payout</span><b id="fx-payout">$—</b></div><strong id="fx-percent">—</strong><div class="fx-profit"><span>Profit</span><b id="fx-profit">+$—</b></div></div>
+        <div class="security-notice" id="fx-notice" role="status" hidden></div>
+        <div class="fx-trade">
+          <button class="fx-buy" type="button" data-tool-action="fx-buy"><i>${arrow('M7 17 17 7M8 7h9v9')}</i>Buy</button>
+          <button class="fx-sell" type="button" data-tool-action="fx-sell"><i>${arrow('M7 7l10 10M17 8v9H8')}</i>Sell</button>
+        </div>
+      </div>
+      <p class="hint" id="fx-status" role="status">${escapeHtml(fx.status)}</p>
+      <p class="note">Prices are live market quotes from TradingView and may be delayed or briefly unavailable. Trading carries risk, including loss of your capital.</p>
+    </div>`;
+    updateForexPayout();
+    startForex();
+  };
+
+  const handleForexAction = (action: string) => {
+    if (action === 'fx-time') {
+      fx.timerIndex = (fx.timerIndex + 1) % FX_TIMERS.length;
+      const field = root.querySelector<HTMLElement>('#fx-time');
+      if (field) field.textContent = fxTime(FX_TIMERS[fx.timerIndex]);
+      fx.lastSecond = 0;
+    } else if (action === 'fx-amount') {
+      const index = FX_AMOUNTS.indexOf(fx.amount);
+      fx.amount = FX_AMOUNTS[(index + 1) % FX_AMOUNTS.length];
+      const input = root.querySelector<HTMLInputElement>('#fx-amount');
+      if (input) input.value = String(fx.amount);
+      updateForexPayout();
+    } else if (action === 'fx-buy' || action === 'fx-sell') {
+      const notice = root.querySelector<HTMLElement>('#fx-notice');
+      if (!TRADING_CONNECTED) {
+        if (notice) {
+          notice.textContent = 'Trading is not connected yet, so no trade was placed and nothing was charged.';
+          notice.hidden = false;
+        }
+        return;
+      }
+    }
+  };
+
+  const handleForexInput = (event: Event) => {
+    const target = event.target;
+    if (target instanceof HTMLInputElement && target.id === 'fx-amount') {
+      fx.amount = Number(target.value) || 0;
+      updateForexPayout();
+    }
+  };
+
+  const handleForexChange = (event: Event) => {
+    const target = event.target;
+    if (target instanceof HTMLSelectElement && target.id === 'fx-pair') {
+      if (!FX_PAIRS.some((pair) => pair.symbol === target.value)) return;
+      fx.symbol = target.value;
+      fx.ticks = [];
+      fx.status = 'Connecting to live quotes…';
+      renderForex();
+    }
+  };
+
+  // Open the terminal instead of the stock market page when Forex is chosen.
+  document.getElementById('nav')?.addEventListener(
+    'click',
+    (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const button = target.closest<HTMLButtonElement>('.nav');
+      if (!button || button.dataset.p !== 'Forex') return;
+      event.stopImmediatePropagation();
+      page = 'Forex';
+      document
+        .querySelectorAll<HTMLElement>('.nav')
+        .forEach((item) => item.classList.toggle('on', item === button));
+      const hide = (id: string, hidden: boolean) => {
+        const node = document.getElementById(id);
+        if (node) node.hidden = hidden;
+      };
+      hide('dash', true);
+      hide('plans', true);
+      hide('mkt', true);
+      hide('misc', false);
+      closeMenu();
+      renderForex();
+      window.scrollTo(0, 0);
+    },
+    true,
+  );
+
+  const forexStyle = document.createElement('style');
+  forexStyle.textContent = `
+    .fx{max-width:760px;margin:0 auto}
+    .fx-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+    .fx-pair{position:relative;display:inline-flex;align-items:center;gap:10px;padding:8px 36px 8px 10px;border:1px solid var(--line);border-radius:14px;background:color-mix(in srgb,var(--ink) 5%,transparent);cursor:pointer}
+    .fx-pair:focus-within{box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 25%,transparent)}
+    .fx-pair::after{content:"▾";position:absolute;right:13px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--ink)}
+    .fx-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+    .fx-flags{display:flex;flex:none}
+    .fx-flags i{display:grid;place-items:center;width:32px;height:32px;border-radius:50%;border:2px solid var(--bg);background:var(--brand);color:#fff;font-style:normal;font-size:10px;font-weight:800}
+    .fx-flags i+i{margin-left:-11px;background:var(--ink);color:var(--bg)}
+    .fx-pair select{appearance:none;-webkit-appearance:none;border:0;outline:none;background:transparent;color:var(--ink);font:inherit;font-size:18px;font-weight:700;cursor:pointer}
+    .fx-pair select option{background:var(--bg);color:var(--ink)}
+    .fx-exp{text-align:right;color:var(--mute);font-size:13px;line-height:1.35}
+    .fx-exp small{display:block;font-size:13px}
+    .fx-exp b{display:block;font-size:17px;font-weight:600;font-variant-numeric:tabular-nums}
+    .fx-chartwrap{position:relative;height:min(52vh,440px);min-height:300px;border:1px solid var(--line);border-radius:16px;overflow:hidden;background:color-mix(in srgb,var(--brand) 5%,var(--bg));touch-action:pan-y}
+    .fx-chartwrap canvas{position:absolute;left:0;top:0;display:block}
+    .fx-stamp{position:absolute;left:12px;top:12px;color:var(--mute);font-size:13px;font-variant-numeric:tabular-nums;pointer-events:none}
+    .fx-sent{display:flex;align-items:center;gap:10px;margin-top:12px;font-size:13px;font-weight:700}
+    .fx-sentbar{position:relative;flex:1;height:10px;border-radius:5px;background:color-mix(in srgb,var(--dn) 55%,transparent);overflow:hidden}
+    .fx-sentbar u{display:block;width:50%;height:100%;background:var(--up);border-radius:5px;transition:width .6s ease}
+    .fx-sent-note{margin:6px 0 0;color:var(--mute);font-size:12px}
+    .fx-panel{margin-top:12px;padding:14px;border:1px solid var(--line);border-radius:16px;background:color-mix(in srgb,var(--ink) 4%,transparent)}
+    .fx-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    .fx-label{display:block;margin-bottom:8px;color:var(--mute);font-size:15px}
+    .fx-field{display:flex;align-items:stretch;border:1px solid var(--line);border-radius:12px;background:var(--bg);overflow:hidden}
+    .fx-input{flex:1;min-width:0;padding:14px;border:0;outline:none;background:transparent;color:var(--ink);font:inherit;font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
+    .fx-field:focus-within{border-color:var(--brand);box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 25%,transparent)}
+    .fx-iconbtn{display:grid;place-items:center;width:52px;flex:none;border-left:1px solid var(--line);color:var(--ink)}
+    .fx-iconbtn:hover{background:color-mix(in srgb,var(--ink) 8%,transparent)}
+    .fx-payout{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;margin-top:12px;padding:10px 14px;border:1px dashed var(--line);border-radius:12px;color:var(--mute);font-size:15px}
+    .fx-payout b{display:block;font-weight:600}
+    .fx-payout strong{color:var(--up);font-size:26px;letter-spacing:-.02em}
+    .fx-profit{text-align:right}
+    .fx-trade{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}
+    .fx-buy,.fx-sell{display:flex;align-items:center;gap:14px;padding:18px;border-radius:12px;color:var(--bg);font-size:20px;font-weight:700;transition:filter .15s,transform .15s}
+    .fx-buy{background:var(--up)}
+    .fx-sell{background:var(--dn)}
+    .fx-buy:hover,.fx-sell:hover{filter:brightness(1.08);transform:translateY(-1px)}
+    .fx-buy:active,.fx-sell:active{transform:none;filter:brightness(.94)}
+    .fx-buy i,.fx-sell i{display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:color-mix(in srgb,var(--bg) 22%,transparent)}
+    .fx .hint{margin-top:10px}
+    @media(max-width:420px){.fx-input{font-size:18px;padding:12px}.fx-buy,.fx-sell{padding:15px;font-size:18px}}
+  `;
+  document.head.appendChild(forexStyle);
 
   const style = document.createElement('style');
   style.textContent = `
@@ -2342,43 +2317,6 @@ export function installMemberDashboardTools() {
     .statement-muted{color:var(--mute)}
     @media(max-width:760px){.statement-filters,.statement-custom{grid-template-columns:1fr}.statement-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.referral-stats,.referral-steps{grid-template-columns:1fr}.referral-field{flex-wrap:wrap}.help-grid{grid-template-columns:1fr}.security-item{flex-direction:column;align-items:flex-start}.security-item-side{justify-content:flex-start}}
     @media(max-width:760px){.member-tool-filters,.member-tool-alert-form{grid-template-columns:1fr}.member-tool-row{grid-template-columns:minmax(0,1fr) auto;gap:8px}.member-tool-heading{display:none}.member-tool-number{text-align:left}.member-tool-action{grid-column:1/-1;justify-self:start}.member-tool-calendar-facts{grid-template-columns:repeat(3,minmax(0,1fr))}}
-    .lending-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:18px 0}
-    .lending-stat{padding:16px;border:1px solid var(--line);border-radius:14px;min-width:0}
-    .lending-stat small{display:block;color:var(--mute);font-size:12px}
-    .lending-stat b{display:block;margin-top:6px;font-size:20px;letter-spacing:-.02em;overflow-wrap:anywhere}
-    .lending-banner{display:grid;gap:6px;justify-items:start;margin:0 0 18px;padding:14px 16px;border:1px solid var(--line);border-radius:12px}
-    .lending-banner b{font-size:14px}
-    .lending-banner p{margin:0;color:var(--mute);font-size:13px;line-height:1.5}
-    .lending-fieldset{border:0;margin:0;padding:0;min-width:0}
-    .lending-fieldset:disabled{opacity:.55}
-    .lending-ack{display:flex;gap:10px;align-items:flex-start;margin:16px 0 4px;color:var(--mute);font-size:13px;line-height:1.5;cursor:pointer}
-    .lending-ack input{margin-top:3px;flex:none}
-    .lending-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 0;border-top:1px solid var(--line)}
-    .lending-row:first-child{border-top:0;padding-top:0}
-    .lending-row-main{display:grid;gap:3px;min-width:0}
-    .lending-row-main small{color:var(--mute);font-size:12px}
-    .lending-steps{list-style:none;counter-reset:lending;display:grid;gap:10px;margin:0;padding:0}
-    .lending-steps li{counter-increment:lending;display:grid;grid-template-columns:28px minmax(0,1fr);column-gap:12px;row-gap:2px;padding:14px;border:1px solid var(--line);border-radius:12px}
-    .lending-steps li::before{content:counter(lending);grid-row:span 2;display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--ink);color:var(--bg);font-size:13px;font-weight:700}
-    .lending-steps span{color:var(--mute);font-size:13px;line-height:1.5}
-    .lending-notes{margin:0;padding-left:20px;color:var(--mute);font-size:13px;line-height:1.7;max-width:70ch}
-    @media(max-width:760px){.lending-stats{grid-template-columns:1fr}}
-    #crypto-modes{margin:18px 0 6px;overflow-x:auto;flex-wrap:nowrap}
-    #crypto-modes .tab{white-space:nowrap}
-    .tm-title{font-size:clamp(28px,5vw,40px)}
-    .tm-banner{display:grid;gap:6px;margin:0 0 18px;padding:14px 16px;border:1px solid var(--line);border-radius:12px}
-    .tm-banner b{font-size:14px}
-    .tm-banner p{margin:0;color:var(--mute);font-size:13px;line-height:1.5}
-    .tm-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:0 0 6px}
-    .tm-stat{min-width:0;padding:14px 16px;border:1px solid var(--line);border-radius:14px}
-    .tm-stat small{display:block;color:var(--mute);font-size:12px}
-    .tm-stat b{display:block;margin-top:6px;font-size:20px}
-    .tm-fieldset{border:0;margin:0;padding:0;min-width:0}
-    .tm-fieldset:disabled{opacity:.55}
-    .tm-ack{display:flex;gap:10px;align-items:flex-start;margin:16px 0 4px;color:var(--mute);font-size:13px;line-height:1.5;cursor:pointer}
-    .tm-ack input{margin-top:3px;flex:none}
-    .tm-notes{margin:0;padding-left:20px;color:var(--mute);font-size:13px;line-height:1.7;max-width:70ch}
-    @media(max-width:760px){.tm-stats{grid-template-columns:1fr}}
   `;
   document.head.appendChild(style);
 
@@ -2387,10 +2325,12 @@ export function installMemberDashboardTools() {
     root.addEventListener('input', (event) => {
       if (page === 'Screener') drawScreenerRows();
       else if (page === 'Profile') handleProfileInput(event);
+      else if (page === 'Forex') handleForexInput(event);
     });
     root.addEventListener('change', (event) => {
       if (page === 'Screener') drawScreenerRows();
       else if (page === 'Statements and tax') handleStatementsChange(event);
+      else if (page === 'Forex') handleForexChange(event);
       else if (page === 'Profile' && event.target instanceof HTMLInputElement && event.target.id === 'profile-avatar-input') {
         handleProfileAvatar(event.target);
       }
@@ -2460,8 +2400,6 @@ export function installMemberDashboardTools() {
         handleStatementsAction(action, button);
       } else if (action === 'submit-ticket') {
         void submitSupportTicket(button);
-      } else if (action === 'submit-lending') {
-        void submitLendingRequest(button);
       } else if (action === 'security-action') {
         void handleSecurityAction(button);
       } else if (action === 'open-verification') {
@@ -2472,6 +2410,8 @@ export function installMemberDashboardTools() {
         handleSignalAction(button);
       } else if (action?.startsWith('profile-')) {
         handleProfileAction(action);
+      } else if (action?.startsWith('fx-')) {
+        handleForexAction(action);
       } else if (action === 'copy-referral') {
         void copyReferral(button);
       }
@@ -2488,8 +2428,6 @@ export function installMemberDashboardTools() {
   R.Profile = renderProfile;
   R.Signals = renderSignals;
   R['Help center'] = renderHelp;
-  R.Lending = renderLending;
-  installCryptoModes();
   R['Security and verification'] = () => {
     securityView = 'overview';
     renderSecurity();
