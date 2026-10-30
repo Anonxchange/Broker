@@ -14,6 +14,8 @@ import {
 } from './admin-email-composer';
 import { adminFinanceBehavior } from './admin-finance.behavior';
 import { adminManagementBehavior } from './admin-management';
+import { adminInvestmentsBehavior } from './admin-investments.behavior';
+import { buildAdminOps, handleInvestmentsMessage } from './investments-bridge';
 import './admin-page.css';
 
 type AdminUserRecord = {
@@ -548,7 +550,7 @@ function buildAdminDocument(bootstrap: AdminBootstrap) {
       if(app){
         app.hidden=false;
         const notice=document.createElement("div");
-        notice.textContent="This console records staff review decisions only. It does not initiate money transfers or change account balances.";
+        notice.textContent="Money actions on this console post to the member ledger immediately and are written to the audit log.";
         notice.setAttribute("role","note");
         notice.style.cssText="margin:12px 18px;padding:10px 14px;border:1px solid var(--line);border-radius:10px;color:var(--mute);font-size:13px";
         app.prepend(notice);
@@ -573,7 +575,8 @@ function buildAdminDocument(bootstrap: AdminBootstrap) {
     )
     .replace(
       '</body>',
-      `<script>${adminProfileBehavior}</script><script>${adminEmailBehavior}</script><script>${adminFinanceBehavior}</script><script>${adminManagementBehavior}</script><script>${bootstrapScript}</script></body>`,
+      () =>
+        `<script>${adminProfileBehavior}</script><script>${adminEmailBehavior}</script><script>${adminFinanceBehavior}</script><script>${adminManagementBehavior}</script><script>${bootstrapScript}</script><script>${adminInvestmentsBehavior}</script></body>`,
     );
 }
 
@@ -923,7 +926,6 @@ export default function AdminPage({
             : 'none';
         })(),
         withdrawals_enabled: Boolean(adminUser.wd),
-        demo_balance: Math.max(0, Number(adminUser.bal) || 0),
       };
       const currentValues: Record<string, unknown> = {
         first_name: current.first_name,
@@ -935,7 +937,6 @@ export default function AdminPage({
         account_status: current.account_status,
         kyc_status: current.kyc_status,
         withdrawals_enabled: current.withdrawals_enabled,
-        demo_balance: Number(current.demo_balance) || 0,
       };
       const patch = Object.fromEntries(
         Object.entries(desired).filter(
@@ -1046,6 +1047,16 @@ export default function AdminPage({
     const persisted = { ...nextState };
     delete persisted.users;
     delete persisted.team;
+    // Deposits, withdrawals, investments and the plan catalog now live in real tables.
+    delete persisted.deposits;
+    delete persisted.withdrawals;
+    delete persisted.plans;
+    delete persisted.catalog;
+    if (Array.isArray(persisted.audit)) {
+      persisted.audit = (persisted.audit as Array<Record<string, unknown>>).filter(
+        (entry) => !entry.srv,
+      );
+    }
     if (Array.isArray(persisted.deposits)) {
       persisted.deposits = (
         persisted.deposits as Array<Record<string, unknown>>
@@ -1212,6 +1223,16 @@ export default function AdminPage({
       if (
         event.source !== frameRef.current?.contentWindow ||
         event.origin !== window.location.origin
+      ) {
+        return;
+      }
+      if (
+        handleInvestmentsMessage(
+          event,
+          frameRef.current,
+          supabase,
+          buildAdminOps(user?.id || ''),
+        )
       ) {
         return;
       }
