@@ -20,13 +20,11 @@ declare const ST: {
   [key: string]: unknown;
 };
 declare let page: string;
-declare let tab: string;
-declare function renderList(): void;
-declare function lg(symbol: string): string;
 declare function closeMenu(): void;
 declare function loadCrypto(): Promise<void>;
 declare function save(): void;
 declare function fmt(amount: number): string;
+declare function lg(symbol: string): string;
 
 export function installMemberDashboardTools() {
   const categories = ['Stocks', 'ETFs', 'Crypto', 'Forex', 'Commodities'];
@@ -218,7 +216,6 @@ export function installMemberDashboardTools() {
     save();
     if (page === 'Screener') drawScreenerRows();
     if (page === 'Watchlist') renderWatchlist();
-    if (page === 'Portfolio' && tab === 'Default') renderList();
   };
 
   const rowMarkup = (
@@ -246,7 +243,7 @@ export function installMemberDashboardTools() {
       .filter(Boolean)
       .join(' · ');
     return `<div class="member-tool-row">
-      <div class="member-tool-symbol"><b>${escapeHtml(row.symbol)}</b><small>${escapeHtml(row.name)} · ${escapeHtml(row.category)}</small>${quoteDetails ? `<small class="member-tool-quote-details">${escapeHtml(quoteDetails)}</small>` : ''}</div>
+      <div style="display:flex;align-items:center;gap:12px;min-width:0">${typeof lg === 'function' ? lg(row.symbol) : ''}<div class="member-tool-symbol"><b>${escapeHtml(row.symbol)}</b><small>${escapeHtml(row.name)} · ${escapeHtml(row.category)}</small>${quoteDetails ? `<small class="member-tool-quote-details">${escapeHtml(quoteDetails)}</small>` : ''}</div></div>
       <div class="member-tool-number">${escapeHtml(priceText(row.category, row.price))}</div>
       <div class="member-tool-number ${changeClass}">${changeText}</div>
       ${
@@ -316,36 +313,7 @@ export function installMemberDashboardTools() {
     }
   };
 
-  const drawWatchSearch = () => {
-    const results = root.querySelector<HTMLElement>('[data-watch-results]');
-    if (!results) return;
-    const query =
-      root.querySelector<HTMLInputElement>('#member-watch-search')?.value.trim().toLowerCase() || '';
-    const category =
-      root.querySelector<HTMLSelectElement>('#member-watch-category')?.value || 'All';
-    const all = liveRows();
-    const rows = all
-      .filter(
-        (row) =>
-          (category === 'All' || row.category === category) &&
-          (!query ||
-            row.symbol.toLowerCase().includes(query) ||
-            row.name.toLowerCase().includes(query)),
-      )
-      .sort((a, b) => a.symbol.localeCompare(b.symbol))
-      .slice(0, 30);
-    results.innerHTML = rows.length
-      ? rows.map((row) => rowMarkup(row)).join('')
-      : all.length
-        ? '<p class="note">No assets match that search.</p>'
-        : noMarketData();
-  };
-
   const renderWatchlist = () => {
-    const previousQuery =
-      root.querySelector<HTMLInputElement>('#member-watch-search')?.value || '';
-    const previousCategory =
-      root.querySelector<HTMLSelectElement>('#member-watch-category')?.value || 'All';
     const selected = watchlist();
     const available = liveRows();
     const rows = selected.flatMap((entry) => {
@@ -356,23 +324,8 @@ export function installMemberDashboardTools() {
       return row ? [row] : [];
     });
     root.innerHTML = `<div class="head"><div><div class="lbl">Saved across sessions</div><div class="bal">Watchlist</div></div><button class="btn alt" type="button" data-tool-action="navigate" data-destination="Screener">Find assets</button></div>
-      <p class="note">Your watchlist is saved with your member dashboard and shows as the Default tab on Portfolio. Add or remove assets below.</p>
-      <h2 class="sec">Your watchlist</h2>
-      <div class="member-tool-list">${rows.length ? rows.map((row) => rowMarkup(row)).join('') : selected.length ? '<p class="note">Your saved assets are not in the latest market feed. They remain saved and can be removed below.</p>' + selected.map((entry) => `<div class="member-tool-row"><div class="member-tool-symbol"><b>${escapeHtml(entry.symbol)}</b><small>${escapeHtml(entry.category)} · no current quote</small></div><span></span><span></span><button class="btn alt member-tool-action" type="button" data-tool-action="toggle-watch" data-category="${escapeHtml(entry.category)}" data-symbol="${escapeHtml(entry.symbol)}">Remove</button></div>`).join('') : '<p class="note">Nothing saved yet. Search below and tap “Add to watchlist.”</p>'}</div>
-      <h2 class="sec">Add assets</h2>
-      <div class="member-tool-filters" style="grid-template-columns:2fr 1fr">
-        <label>Search<input id="member-watch-search" type="search" placeholder="Search symbol or name"></label>
-        <label>Category<select id="member-watch-category"><option>All</option>${categories
-          .map((category) => `<option>${category}</option>`)
-          .join('')}</select></label>
-      </div>
-      <div class="member-tool-list" data-watch-results></div>`;
-    const searchInput = root.querySelector<HTMLInputElement>('#member-watch-search');
-    const categorySelect = root.querySelector<HTMLSelectElement>('#member-watch-category');
-    if (searchInput) searchInput.value = previousQuery;
-    if (categorySelect) categorySelect.value = previousCategory;
-    drawWatchSearch();
-
+      <p class="note">Your watchlist is saved with your member dashboard. Prices refresh from TradingView when quotes are available.</p>
+      <div class="member-tool-list">${rows.length ? rows.map((row) => rowMarkup(row)).join('') : selected.length ? '<p class="note">Your saved assets are not in the latest market feed. They remain saved and can be removed below.</p>' + selected.map((entry) => `<div class="member-tool-row"><div class="member-tool-symbol"><b>${escapeHtml(entry.symbol)}</b><small>${escapeHtml(entry.category)} · no current quote</small></div><span></span><span></span><button class="btn alt member-tool-action" type="button" data-tool-action="toggle-watch" data-category="${escapeHtml(entry.category)}" data-symbol="${escapeHtml(entry.symbol)}">Remove</button></div>`).join('') : '<p class="note">No saved assets yet. Open Screener and choose “Add to watchlist.”</p>'}</div>`;
     if (!available.length) {
       void loadCrypto().then(() => {
         if (page === 'Watchlist') renderWatchlist();
@@ -1607,14 +1560,6 @@ export function installMemberDashboardTools() {
     void button;
   };
 
-  const newsImage = (article: Record<string, unknown>) => {
-    for (const key of ['imageUrl', 'image', 'thumbnail', 'urlToImage', 'imageURL']) {
-      const candidate = safeExternalUrl(article[key]);
-      if (candidate) return candidate;
-    }
-    return null;
-  };
-
   const renderNews = () => {
     const requestId = ++publicContentRequest;
     const header = `<div class="head"><div><div class="lbl">Live market coverage</div><div class="bal">News</div></div></div>`;
@@ -1623,7 +1568,7 @@ export function installMemberDashboardTools() {
       try {
         const payload = await requestPublicJson(
           'market-news',
-          'https://biquote.io/api/News/market?maxResults=50&language=en&country=US',
+          'https://biquote.io/api/News/market?maxResults=20&language=en&country=US',
         );
         if (!Array.isArray(payload)) {
           throw new Error('The public news provider returned an unexpected response.');
@@ -1640,22 +1585,10 @@ export function installMemberDashboardTools() {
           const publishedAt = formatPublicDate(
             article.publishedDate ?? article.publishedAt,
           );
-          const imageUrl = newsImage(article);
-          const initials =
-            publisher
-              .split(/\s+/)
-              .filter(Boolean)
-              .slice(0, 2)
-              .map((word) => word.charAt(0).toUpperCase())
-              .join('') || 'N';
-          const thumb = `<a class="member-tool-news-thumb" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" tabindex="-1" aria-hidden="true"><span class="member-tool-news-ph">${escapeHtml(initials)}</span>${imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}</a>`;
           return [
-            `<article class="member-tool-card member-tool-news-card has-image">
-              ${thumb}
-              <div class="member-tool-news-body">
-                <p class="member-tool-news-meta">${escapeHtml(publisher)}${publishedAt ? ` · ${escapeHtml(publishedAt)}` : ''}</p>
-                <h3><a class="member-tool-news-title" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(title)}</a></h3>
-              </div>
+            `<article class="member-tool-card">
+              <p class="member-tool-news-meta">${escapeHtml(publisher)}${publishedAt ? ` · ${escapeHtml(publishedAt)}` : ''}</p>
+              <h3><a class="member-tool-news-title" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(title)}</a></h3>
             </article>`,
           ];
         });
@@ -2898,16 +2831,6 @@ export function installMemberDashboardTools() {
     .member-tool-card a{display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
     .member-tool-news-meta,.member-tool-calendar-source{color:var(--mute);font-size:12px}
     .member-tool-news-title{color:var(--ink);line-height:1.45}
-    .member-tool-news-card{margin:0}
-    .member-tool-news-card.has-image{display:grid;grid-template-columns:132px minmax(0,1fr);gap:16px;align-items:center}
-    .member-tool-news-card .member-tool-news-thumb{position:relative;display:grid;place-items:center;width:132px;height:88px;border-radius:10px;overflow:hidden;background:var(--line)}
-    .member-tool-news-card .member-tool-news-thumb img{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:cover}
-    .member-tool-news-ph{color:var(--mute);font-size:22px;font-weight:700;letter-spacing:.04em}
-    .nw a{color:inherit;text-decoration:none}.nw a:hover{text-decoration:underline}
-    .sec .more{cursor:pointer}
-    .member-tool-news-card h3{margin:4px 0 0}
-    .member-tool-news-card .member-tool-news-meta{margin:0}
-    @media (max-width:560px){.member-tool-news-card.has-image{grid-template-columns:96px minmax(0,1fr);gap:12px}.member-tool-news-card .member-tool-news-thumb{width:96px;height:72px}}
     .member-tool-calendar-meta{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;margin-bottom:10px;color:var(--mute);font-size:12px}
     .member-tool-calendar-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0}
     .member-tool-calendar-facts span{display:grid;gap:4px}
@@ -3024,13 +2947,11 @@ export function installMemberDashboardTools() {
     root.dataset.memberToolsBound = 'true';
     root.addEventListener('input', (event) => {
       if (page === 'Screener') drawScreenerRows();
-      else if (page === 'Watchlist') drawWatchSearch();
       else if (page === 'Profile') handleProfileInput(event);
       else if (FX_MARKETS[page]) handleForexInput(event);
     });
     root.addEventListener('change', (event) => {
       if (page === 'Screener') drawScreenerRows();
-      else if (page === 'Watchlist') drawWatchSearch();
       else if (page === 'Statements and tax') handleStatementsChange(event);
       else if (FX_MARKETS[page]) handleForexChange(event);
       else if (page === 'Economic calendar') handleCalendarChange(event);
@@ -3122,167 +3043,6 @@ export function installMemberDashboardTools() {
       }
     });
   }
-
-
-  // ---- Portfolio page: Default watchlist tab, Edit / See all links, live news
-  const goToPage = (destination: string) => {
-    document
-      .querySelector<HTMLButtonElement>(`#nav .nav[data-p="${destination}"]`)
-      ?.click();
-  };
-
-  const drawDefaultWatchlist = () => {
-    const list = document.getElementById('list');
-    if (!list) return;
-    const selected = watchlist();
-    if (!selected.length) {
-      list.innerHTML =
-        '<p class="note">Your watchlist is empty. <button class="more" type="button" data-home-action="edit-watchlist">Add assets</button></p>';
-      return;
-    }
-    const available = liveRows();
-    list.innerHTML =
-      '<div class="th"><span>Asset</span><span></span><span>Price</span><span>Change</span><span></span></div>' +
-      selected
-        .map((entry) => {
-          const row = available.find(
-            (asset) =>
-              asset.category === entry.category && asset.symbol === entry.symbol,
-          );
-          const changeClass =
-            !row || row.change === null ? '' : row.change >= 0 ? 'up' : 'dn';
-          const changeText =
-            !row || row.change === null
-              ? '—'
-              : `${row.change >= 0 ? '+' : '−'}${Math.abs(row.change).toFixed(1)}%`;
-          return `<div class="a"><div class="nm">${lg(entry.symbol)}<div>${escapeHtml(entry.symbol)}<small>${escapeHtml(row ? row.name : entry.category)}</small></div></div><div class="spk"></div><div class="r">${row ? escapeHtml(priceText(row.category, row.price)) : '—'}</div><div class="r ${changeClass}">${changeText}</div><span></span></div>`;
-        })
-        .join('');
-  };
-
-  type HomeNewsItem = { title: string; url: string; publisher: string; date: string };
-  let homeNews: HomeNewsItem[] | null = null;
-  let homeNewsLoading = false;
-  let homeNewsRetryAt = 0;
-
-  const paintHomeNews = () => {
-    const box = document.getElementById('nw');
-    if (!box) return;
-    if (homeNews && homeNews.length) {
-      box.innerHTML = homeNews
-        .map(
-          (item) =>
-            `<div class="nw"><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title)}</a><small>${escapeHtml(item.publisher)}${item.date ? ` · ${escapeHtml(item.date)}` : ''}</small></div>`,
-        )
-        .join('');
-      return;
-    }
-    box.innerHTML = `<div class="nw">${homeNews ? 'No current headlines were returned.' : homeNewsRetryAt > Date.now() ? 'Market headlines are temporarily unavailable.' : 'Loading market headlines…'}</div>`;
-  };
-
-  const loadHomeNews = () => {
-    if (homeNews || homeNewsLoading || homeNewsRetryAt > Date.now()) return;
-    homeNewsLoading = true;
-    void requestPublicJson(
-      'market-news-home',
-      'https://biquote.io/api/News/market?maxResults=6&language=en&country=US',
-    )
-      .then((payload) => {
-        if (!Array.isArray(payload)) throw new Error('Unexpected news response.');
-        homeNews = payload.flatMap((value) => {
-          if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
-          const article = value as Record<string, unknown>;
-          const title = String(article.title ?? '').trim();
-          const url = safeExternalUrl(article.url);
-          if (!title || !url) return [];
-          return [
-            {
-              title,
-              url,
-              publisher: String(article.publisher ?? 'Market news'),
-              date: formatPublicDate(article.publishedDate ?? article.publishedAt),
-            },
-          ];
-        });
-      })
-      .catch(() => {
-        homeNewsRetryAt = Date.now() + 60_000;
-      })
-      .finally(() => {
-        homeNewsLoading = false;
-        paintHomeNews();
-      });
-  };
-
-  const globals = window as unknown as Record<string, unknown>;
-  const originalRenderList = globals.renderList as (() => void) | undefined;
-  if (typeof originalRenderList === 'function') {
-    globals.renderList = () => {
-      if (tab === 'Default' && !globals.host) {
-        document.querySelectorAll<HTMLElement>('.tab').forEach((button) => {
-          const on = button.dataset.t === 'Default';
-          button.classList.toggle('on', on);
-          button.setAttribute('aria-selected', String(on));
-        });
-        drawDefaultWatchlist();
-        return;
-      }
-      originalRenderList();
-    };
-  }
-  const originalRenderRail = globals.renderRail as (() => void) | undefined;
-  if (typeof originalRenderRail === 'function') {
-    globals.renderRail = () => {
-      originalRenderRail();
-      paintHomeNews();
-      loadHomeNews();
-    };
-  }
-
-  const dashboard = document.getElementById('dash');
-  if (dashboard && !dashboard.dataset.homeLinksBound) {
-    dashboard.dataset.homeLinksBound = 'true';
-    dashboard.querySelectorAll<HTMLElement>('.sec .more').forEach((button) => {
-      const heading = (button.parentElement?.firstChild?.textContent || '').trim();
-      if (heading === 'Watchlist') {
-        button.setAttribute('type', 'button');
-        button.setAttribute('aria-label', 'Edit watchlist');
-        button.dataset.homeAction = 'edit-watchlist';
-      } else if (heading === 'News') {
-        button.setAttribute('type', 'button');
-        button.setAttribute('aria-label', 'See all news');
-        button.dataset.homeAction = 'see-news';
-      }
-    });
-    dashboard.addEventListener('click', (event) => {
-      const target = event.target;
-      if (!(target instanceof Element)) return;
-      const action = target.closest<HTMLElement>('[data-home-action]')?.dataset.homeAction;
-      if (action === 'edit-watchlist') goToPage('Watchlist');
-      else if (action === 'see-news') goToPage('News');
-    });
-  }
-
-  document.getElementById('nav')?.addEventListener('click', (event) => {
-    const target = event.target;
-    if (!(target instanceof Element)) return;
-    if (target.closest<HTMLElement>('.nav')?.dataset.p === 'Portfolio') {
-      tab = 'Default';
-      renderList();
-    }
-  });
-
-  const portfolioTabs = document.getElementById('tabs');
-  if (portfolioTabs && !portfolioTabs.querySelector('[data-t="Default"]')) {
-    portfolioTabs.insertAdjacentHTML(
-      'afterbegin',
-      '<button class="tab" role="tab" data-t="Default">Default</button>',
-    );
-  }
-  tab = 'Default';
-  renderList();
-  paintHomeNews();
-  loadHomeNews();
 
   R.Screener = renderScreener;
   R['Price alerts'] = () => renderAlerts();
