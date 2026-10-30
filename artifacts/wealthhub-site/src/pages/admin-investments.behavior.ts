@@ -13,7 +13,7 @@ export const adminInvestmentsBehavior = String.raw`
   const waiting = new Map();
   let seq = 0;
   window.addEventListener("message", e => {
-    if (e.source !== window.parent || e.origin !== window.location.origin) return;
+    if (e.source !== window.parent || !window.__AUVORIGINOK__(e)) return;
     const m = e.data;
     if (!m || m.type !== "auvrenthia-inv-result") return;
     const w = waiting.get(m.id);
@@ -24,7 +24,7 @@ export const adminInvestmentsBehavior = String.raw`
   const inv = (op, ...args) => new Promise((resolve, reject) => {
     const id = "i" + (++seq) + "-" + Date.now();
     waiting.set(id, { resolve, reject });
-    window.parent.postMessage({ type: "auvrenthia-inv-call", id, op, args }, window.location.origin);
+    window.parent.postMessage({ type: "auvrenthia-inv-call", id, op, args }, window.__AUVHOST__);
     setTimeout(() => { if (waiting.delete(id)) reject(new Error("The request timed out. Try again.")); }, 30000);
   });
 
@@ -463,7 +463,8 @@ export const adminInvestmentsBehavior = String.raw`
   };
 
   /* ---------- first load ---------- */
-  inv("load").then(d => { apply(d); render(); }).catch(e => toast(e.message || "Could not load investment data."));
+  DB.catalog = DB.catalog || []; DB.plans = DB.plans || []; DB.deposits = DB.deposits || []; DB.withdrawals = DB.withdrawals || [];
+  inv("load").then(d => { apply(d); render(); }).catch(e => { toast(e.message || "Could not load investment data."); try { render(); } catch (x) {} });
   setInterval(() => { if (!document.hidden && $("#ov").hidden) reload().then(() => { if ($("#ov").hidden) render(); }).catch(() => {}); }, 60000);
 })();
 `;
