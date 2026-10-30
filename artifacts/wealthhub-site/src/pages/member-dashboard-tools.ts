@@ -1236,6 +1236,210 @@ export function installMemberDashboardTools() {
     }
   };
 
+  // ---- Profile (frontend only) ------------------------------------------
+  // Nothing is saved yet. Set PROFILE_CONNECTED to true once saving and
+  // avatar upload are wired to Supabase. The picture is only previewed in
+  // this browser until then.
+  const PROFILE_CONNECTED = false;
+  const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
+  const profileDraft = {
+    firstName: '',
+    lastName: '',
+    phone: '',
+    country: '',
+    state: '',
+    postal: '',
+    address: '',
+  };
+  let profileDraftLoaded = false;
+  let profileAvatarUrl: string | null = null;
+
+  const authProfile = (): Record<string, unknown> =>
+    (window as unknown as { __AUVRENTHIA_PROFILE__?: Record<string, unknown> })
+      .__AUVRENTHIA_PROFILE__ || {};
+  const textValue = (value: unknown) => (typeof value === 'string' ? value : '');
+
+  const loadProfileDraft = () => {
+    if (profileDraftLoaded) return;
+    const profile = authProfile();
+    profileDraft.firstName = textValue(profile.first_name);
+    profileDraft.lastName = textValue(profile.last_name);
+    profileDraft.phone = textValue(profile.phone);
+    profileDraft.country = textValue(profile.country);
+    profileDraft.address = textValue(profile.address);
+    profileDraftLoaded = true;
+  };
+
+  const applyAvatar = () => {
+    document
+      .querySelectorAll<HTMLElement>(
+        '.top .av, [data-profile-view="menu"] .profile-dropdown__initial',
+      )
+      .forEach((node) => {
+        if (node.dataset.initial === undefined) node.dataset.initial = node.textContent || '';
+        if (profileAvatarUrl) {
+          node.textContent = '';
+          node.style.backgroundImage = `url("${profileAvatarUrl}")`;
+          node.style.backgroundSize = 'cover';
+          node.style.backgroundPosition = 'center';
+        } else {
+          node.style.backgroundImage = '';
+          node.textContent = node.dataset.initial || '';
+        }
+      });
+  };
+
+  const profileKycBadge = (): [string, string] => {
+    switch (String(authProfile().kyc_status || 'none')) {
+      case 'verified':
+        return ['Verified', 'r1'];
+      case 'pending':
+        return ['Pending review', 'r2'];
+      case 'rejected':
+        return ['Action required', 'r3'];
+      default:
+        return ['Not verified', 'security-badge-muted'];
+    }
+  };
+
+  const renderProfile = () => {
+    loadProfileDraft();
+    const profile = authProfile();
+    const verified = String(profile.kyc_status || '') === 'verified';
+    const [kycLabel, kycTone] = profileKycBadge();
+    const accountStatus = textValue(profile.account_status) || 'active';
+    const initial = (profileDraft.firstName || textValue(profile.email) || 'M').charAt(0).toUpperCase();
+    const lock = verified ? ' disabled aria-disabled="true"' : '';
+    const input = (id: string, label: string, value: string, extra = '', locked = false) =>
+      `<div><label class="fl" for="${id}">${label}</label><input class="help-input" id="${id}" type="text" value="${escapeHtml(value)}"${extra}${locked ? lock : ''}></div>`;
+    const avatar = profileAvatarUrl
+      ? `<img src="${escapeHtml(profileAvatarUrl)}" alt="Your profile picture">`
+      : `<span aria-hidden="true">${escapeHtml(initial)}</span>`;
+
+    root.innerHTML = `<div class="head"><div><div class="lbl">Your personal details</div><div class="bal">Profile</div></div></div>
+      <p class="note">Keep your details up to date so support can help you quickly.</p>
+      <div class="security-notice" id="profile-notice" role="status" hidden></div>
+
+      <div class="mp profile-card">
+        <div class="profile-avatar-row">
+          <div class="profile-avatar">${avatar}</div>
+          <div class="profile-avatar-info">
+            <b>Profile picture</b>
+            <small>PNG, JPG or WebP · up to 2 MB</small>
+            <div class="deposit-actions">
+              <label class="btn alt profile-upload" for="profile-avatar-input">${profileAvatarUrl ? 'Change photo' : 'Upload photo'}</label>
+              <input id="profile-avatar-input" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+              ${profileAvatarUrl ? '<button class="btn alt" type="button" data-tool-action="profile-remove-avatar">Remove</button>' : ''}
+            </div>
+            <div class="err" id="profile-avatar-error" role="alert"></div>
+          </div>
+        </div>
+      </div>
+
+      <h2 class="sec">Personal information</h2>
+      <div class="mp profile-card">
+        ${verified ? '<p class="hint">Your name and address are locked because your identity is verified. Contact support to change them.</p>' : ''}
+        <div class="help-grid">
+          ${input('profile-first', 'First name', profileDraft.firstName, ' maxlength="60" autocomplete="given-name"', true)}
+          ${input('profile-last', 'Last name', profileDraft.lastName, ' maxlength="60" autocomplete="family-name"', true)}
+          <div><label class="fl" for="profile-email">Email address</label><input class="help-input" id="profile-email" type="email" value="${escapeHtml(textValue(profile.email))}" readonly aria-readonly="true"></div>
+          ${input('profile-phone', 'Phone number', profileDraft.phone, ' maxlength="30" inputmode="tel" autocomplete="tel"')}
+          ${input('profile-country', 'Country', profileDraft.country, ' maxlength="60" autocomplete="country-name"', true)}
+          ${input('profile-state', 'State / province', profileDraft.state, ' maxlength="60" autocomplete="address-level1"')}
+          ${input('profile-postal', 'Postal / ZIP code', profileDraft.postal, ' maxlength="20" autocomplete="postal-code"')}
+        </div>
+        <label class="fl" for="profile-address">Address</label>
+        <textarea class="help-input help-textarea" id="profile-address" rows="3" maxlength="300" placeholder="Street, city"${verified ? lock : ''}>${escapeHtml(profileDraft.address)}</textarea>
+        <div class="hint">Your email can only be changed through a confirmation email. Contact support if you need to change it.</div>
+        <div class="err" id="profile-error" role="alert"></div>
+        <div class="deposit-actions">
+          <button class="btn" type="button" data-tool-action="profile-save">Save changes</button>
+          <button class="btn alt" type="button" data-tool-action="profile-reset">Reset</button>
+        </div>
+      </div>
+
+      <h2 class="sec">Account status</h2>
+      <div class="mp profile-card">
+        <ul class="security-list" aria-label="Account status">
+          <li class="security-item"><div class="security-item-main"><b>Account</b><small>Your account standing.</small></div><div class="security-item-side"><span class="risk ${accountStatus === 'active' ? 'r1' : 'r3'}">${escapeHtml(statusText(accountStatus))}</span></div></li>
+          <li class="security-item"><div class="security-item-main"><b>Identity verification</b><small>Required to unlock all account features.</small></div><div class="security-item-side"><span class="risk ${kycTone}">${kycLabel}</span><button class="btn alt" type="button" data-tool-action="navigate" data-destination="Security and verification">View</button></div></li>
+        </ul>
+      </div>`;
+  };
+
+  const showProfileNotice = (message: string) => {
+    const notice = root.querySelector<HTMLElement>('#profile-notice');
+    if (!notice) return;
+    notice.textContent = message;
+    notice.hidden = false;
+  };
+
+  const handleProfileInput = (event: Event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) return;
+    const map: Record<string, keyof typeof profileDraft> = {
+      'profile-first': 'firstName',
+      'profile-last': 'lastName',
+      'profile-phone': 'phone',
+      'profile-country': 'country',
+      'profile-state': 'state',
+      'profile-postal': 'postal',
+      'profile-address': 'address',
+    };
+    const key = map[target.id];
+    if (key) profileDraft[key] = target.value;
+  };
+
+  const handleProfileAvatar = (input: HTMLInputElement) => {
+    const error = root.querySelector<HTMLElement>('#profile-avatar-error');
+    const file = input.files?.[0];
+    if (!file) return;
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      if (error) error.textContent = 'Choose a PNG, JPG or WebP image.';
+      input.value = '';
+      return;
+    }
+    if (file.size === 0 || file.size > AVATAR_MAX_BYTES) {
+      if (error) error.textContent = 'Choose an image under 2 MB.';
+      input.value = '';
+      return;
+    }
+    if (profileAvatarUrl) URL.revokeObjectURL(profileAvatarUrl);
+    profileAvatarUrl = URL.createObjectURL(file);
+    applyAvatar();
+    renderProfile();
+    showProfileNotice('Photo previewed on this device only. Saving profile pictures is not connected yet.');
+  };
+
+  const handleProfileAction = (action: string) => {
+    if (action === 'profile-remove-avatar') {
+      if (profileAvatarUrl) URL.revokeObjectURL(profileAvatarUrl);
+      profileAvatarUrl = null;
+      applyAvatar();
+      renderProfile();
+    } else if (action === 'profile-reset') {
+      profileDraftLoaded = false;
+      profileDraft.state = '';
+      profileDraft.postal = '';
+      renderProfile();
+    } else if (action === 'profile-save') {
+      const error = root.querySelector<HTMLElement>('#profile-error');
+      if (error) error.textContent = '';
+      if (profileDraft.firstName.trim().length < 1 || profileDraft.lastName.trim().length < 1) {
+        if (error) error.textContent = 'Enter your first and last name.';
+        return;
+      }
+      if (profileDraft.phone.trim() && !/^[+\d][\d\s().-]{5,}$/.test(profileDraft.phone.trim())) {
+        if (error) error.textContent = 'Enter a valid phone number.';
+        return;
+      }
+      if (!PROFILE_CONNECTED) {
+        showProfileNotice('Saving is not connected yet, so nothing was changed.');
+        return;
+      }
+    }
+  };
+
   const renderNews = () => {
     const requestId = ++publicContentRequest;
     const header = `<div class="head"><div><div class="lbl">Live market coverage</div><div class="bal">News</div></div></div>`;
@@ -1357,6 +1561,13 @@ export function installMemberDashboardTools() {
     .member-tool-calendar-facts b{font-variant-numeric:tabular-nums}
     .member-tool-calendar-source{margin:8px 0 0!important}
     .member-tool-alert-form{grid-template-columns:1.4fr 1fr 1fr auto;align-items:end}
+    .profile-card{max-width:900px}
+    .profile-avatar-row{display:flex;align-items:center;gap:20px;flex-wrap:wrap}
+    .profile-avatar{display:grid;place-items:center;width:96px;height:96px;flex:none;border-radius:50%;overflow:hidden;background:var(--ink);color:var(--bg);font-size:36px;font-weight:800}
+    .profile-avatar img{width:100%;height:100%;object-fit:cover;display:block}
+    .profile-avatar-info{display:grid;gap:4px;min-width:0}
+    .profile-avatar-info small{color:var(--mute);font-size:13px}
+    .profile-upload{display:inline-flex;align-items:center;cursor:pointer}
     .help-ticket{max-width:900px}
     .help-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:16px}
     .help-input{width:100%;min-width:0;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font:inherit}
@@ -1450,12 +1661,16 @@ export function installMemberDashboardTools() {
 
   if (!root.dataset.memberToolsBound) {
     root.dataset.memberToolsBound = 'true';
-    root.addEventListener('input', () => {
+    root.addEventListener('input', (event) => {
       if (page === 'Screener') drawScreenerRows();
+      else if (page === 'Profile') handleProfileInput(event);
     });
     root.addEventListener('change', (event) => {
       if (page === 'Screener') drawScreenerRows();
       else if (page === 'Statements and tax') handleStatementsChange(event);
+      else if (page === 'Profile' && event.target instanceof HTMLInputElement && event.target.id === 'profile-avatar-input') {
+        handleProfileAvatar(event.target);
+      }
     });
     root.addEventListener('click', (event) => {
       const target = event.target;
@@ -1528,6 +1743,8 @@ export function installMemberDashboardTools() {
         openVerification();
       } else if (action === 'security-back') {
         openSecurityView('overview');
+      } else if (action?.startsWith('profile-')) {
+        handleProfileAction(action);
       } else if (action === 'copy-referral') {
         void copyReferral(button);
       }
@@ -1541,6 +1758,7 @@ export function installMemberDashboardTools() {
   R['Economic calendar'] = renderCalendar;
   R['Statements and tax'] = renderStatements;
   R.Referral = renderReferral;
+  R.Profile = renderProfile;
   R['Help center'] = renderHelp;
   R['Security and verification'] = () => {
     securityView = 'overview';
