@@ -1291,6 +1291,14 @@ export function installMemberDashboardTools() {
   // this browser until then.
   const PROFILE_CONNECTED = false;
   const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
+  type ProfileAuthAction = 'change-password' | 'sign-out-all-devices';
+  const pendingProfileAuthRequests = new Map<
+    string,
+    {
+      action: ProfileAuthAction;
+      timeout: ReturnType<typeof setTimeout>;
+    }
+  >();
   const profileDraft = {
     firstName: '',
     lastName: '',
@@ -1413,6 +1421,39 @@ export function installMemberDashboardTools() {
           <li class="security-item"><div class="security-item-main"><b>Account</b><small>Your account standing.</small></div><div class="security-item-side"><span class="risk ${accountStatus === 'active' ? 'r1' : 'r3'}">${escapeHtml(statusText(accountStatus))}</span></div></li>
           <li class="security-item"><div class="security-item-main"><b>Identity verification</b><small>Required to unlock all account features.</small></div><div class="security-item-side"><span class="risk ${kycTone}">${kycLabel}</span><button class="btn alt" type="button" data-tool-action="navigate" data-destination="Security and verification">View</button></div></li>
         </ul>
+      </div>
+
+      <h2 class="sec">Password and sessions</h2>
+      <div class="mp profile-card">
+        <h3>Change password</h3>
+        <p class="hint">Choose a new password that is at least 8 characters long.</p>
+        <div class="help-grid">
+          <div><label class="fl" for="profile-new-password">New password</label><input class="help-input" id="profile-new-password" type="password" autocomplete="new-password" minlength="8" maxlength="72"></div>
+          <div><label class="fl" for="profile-confirm-password">Confirm new password</label><input class="help-input" id="profile-confirm-password" type="password" autocomplete="new-password" minlength="8" maxlength="72"></div>
+        </div>
+        <div class="err" id="profile-password-error" role="alert"></div>
+        <p class="hint" id="profile-password-status" role="status" aria-live="polite"></p>
+        <div class="deposit-actions">
+          <button class="btn" type="button" data-tool-action="profile-change-password">Change password</button>
+        </div>
+      </div>
+
+      <div class="mp profile-card">
+        <h3>Sign out all devices</h3>
+        <p class="hint">This ends your current session and signs your account out on other devices.</p>
+        <div class="err" id="profile-signout-error" role="alert"></div>
+        <p class="hint" id="profile-signout-status" role="status" aria-live="polite"></p>
+        <div class="deposit-actions">
+          <button class="btn alt" type="button" data-tool-action="profile-confirm-signout-all" aria-controls="profile-signout-confirmation" aria-expanded="false">Sign out all devices</button>
+        </div>
+        <div class="security-notice" id="profile-signout-confirmation" role="group" aria-labelledby="profile-signout-confirmation-title" hidden>
+          <b id="profile-signout-confirmation-title">Confirm sign out</b>
+          <p>You will be signed out here and on your other devices. You will need to sign in again.</p>
+          <div class="deposit-actions">
+            <button class="btn alt" type="button" data-tool-action="profile-cancel-signout">Cancel</button>
+            <button class="btn" type="button" data-tool-action="profile-signout-all">Confirm sign out</button>
+          </div>
+        </div>
       </div>`;
   };
 
@@ -1422,6 +1463,98 @@ export function installMemberDashboardTools() {
     notice.textContent = message;
     notice.hidden = false;
   };
+
+  const profileAuthButton = (action: ProfileAuthAction) =>
+    root.querySelector<HTMLButtonElement>(
+      action === 'change-password'
+        ? '[data-tool-action="profile-change-password"]'
+        : '[data-tool-action="profile-signout-all"]',
+    );
+
+  const updateProfileAuthFeedback = (
+    action: ProfileAuthAction,
+    ok: boolean,
+    message: string,
+  ) => {
+    if (action === 'change-password') {
+      const error = root.querySelector<HTMLElement>('#profile-password-error');
+      const status = root.querySelector<HTMLElement>('#profile-password-status');
+      if (error) error.textContent = ok ? '' : message;
+      if (status) status.textContent = ok ? message : '';
+      return;
+    }
+
+    const error = root.querySelector<HTMLElement>('#profile-signout-error');
+    const status = root.querySelector<HTMLElement>('#profile-signout-status');
+    if (error) error.textContent = ok ? '' : message;
+    if (status) status.textContent = ok ? message : '';
+  };
+
+  const sendProfileAuthRequest = (
+    action: ProfileAuthAction,
+    payload: Record<string, string> = {},
+  ) => {
+    const requestId = crypto.randomUUID();
+    const timeout = setTimeout(() => {
+      const pending = pendingProfileAuthRequests.get(requestId);
+      if (!pending) return;
+      pendingProfileAuthRequests.delete(requestId);
+      const button = profileAuthButton(pending.action);
+      if (button) {
+        button.disabled = false;
+        button.textContent =
+          pending.action === 'change-password'
+            ? 'Change password'
+            : 'Sign out all devices';
+      }
+      updateProfileAuthFeedback(
+        pending.action,
+        false,
+        'The request timed out. Check your connection and try again.',
+      );
+    }, 30_000);
+    pendingProfileAuthRequests.set(requestId, { action, timeout });
+    window.parent.postMessage(
+      {
+        type: 'auvrenthia-profile-auth-request',
+        requestId,
+        action,
+        ...payload,
+      },
+      window.location.origin,
+    );
+  };
+
+  window.addEventListener('message', (event: MessageEvent) => {
+    if (
+      event.source !== window.parent ||
+      event.origin !== window.location.origin ||
+      event.data?.type !== 'auvrenthia-profile-auth-response' ||
+      typeof event.data.requestId !== 'string'
+    ) {
+      return;
+    }
+    const pending = pendingProfileAuthRequests.get(event.data.requestId);
+    if (!pending) return;
+    clearTimeout(pending.timeout);
+    pendingProfileAuthRequests.delete(event.data.requestId);
+    const ok = event.data.ok === true;
+    const message =
+      typeof event.data.message === 'string'
+        ? event.data.message.slice(0, 300)
+        : ok
+          ? 'Done.'
+          : 'The request could not be completed. Please try again.';
+    const button = profileAuthButton(pending.action);
+    if (button) {
+      button.disabled = false;
+      button.textContent =
+        pending.action === 'change-password'
+          ? 'Change password'
+          : 'Sign out all devices';
+    }
+    updateProfileAuthFeedback(pending.action, ok, message);
+  });
 
   const handleProfileInput = (event: Event) => {
     const target = event.target;
@@ -1486,6 +1619,78 @@ export function installMemberDashboardTools() {
         showProfileNotice('Saving is not connected yet, so nothing was changed.');
         return;
       }
+    } else if (action === 'profile-change-password') {
+      const error = root.querySelector<HTMLElement>('#profile-password-error');
+      const status = root.querySelector<HTMLElement>('#profile-password-status');
+      const passwordInput = root.querySelector<HTMLInputElement>(
+        '#profile-new-password',
+      );
+      const confirmInput = root.querySelector<HTMLInputElement>(
+        '#profile-confirm-password',
+      );
+      if (error) error.textContent = '';
+      if (status) status.textContent = '';
+      const password = passwordInput?.value || '';
+      const confirmation = confirmInput?.value || '';
+      if (password.length < 8 || password.length > 72) {
+        if (error) error.textContent = 'Use a password between 8 and 72 characters.';
+        return;
+      }
+      if (password !== confirmation) {
+        if (error) error.textContent = 'The password entries do not match.';
+        return;
+      }
+      const button = profileAuthButton('change-password');
+      if (!button || button.disabled) return;
+      if (passwordInput) passwordInput.value = '';
+      if (confirmInput) confirmInput.value = '';
+      button.disabled = true;
+      button.textContent = 'Changing password…';
+      if (status) status.textContent = 'Changing your password…';
+      sendProfileAuthRequest('change-password', { password });
+    } else if (action === 'profile-confirm-signout-all') {
+      const confirmation = root.querySelector<HTMLElement>(
+        '#profile-signout-confirmation',
+      );
+      const trigger = root.querySelector<HTMLButtonElement>(
+        '[data-tool-action="profile-confirm-signout-all"]',
+      );
+      const error = root.querySelector<HTMLElement>('#profile-signout-error');
+      const status = root.querySelector<HTMLElement>('#profile-signout-status');
+      if (error) error.textContent = '';
+      if (status) status.textContent = '';
+      if (confirmation) confirmation.hidden = false;
+      trigger?.setAttribute('aria-expanded', 'true');
+      root
+        .querySelector<HTMLButtonElement>(
+          '#profile-signout-confirmation [data-tool-action="profile-signout-all"]',
+        )
+        ?.focus();
+    } else if (action === 'profile-cancel-signout') {
+      const confirmation = root.querySelector<HTMLElement>(
+        '#profile-signout-confirmation',
+      );
+      const trigger = root.querySelector<HTMLButtonElement>(
+        '[data-tool-action="profile-confirm-signout-all"]',
+      );
+      if (confirmation) confirmation.hidden = true;
+      trigger?.setAttribute('aria-expanded', 'false');
+      trigger?.focus();
+    } else if (action === 'profile-signout-all') {
+      const confirmation = root.querySelector<HTMLElement>(
+        '#profile-signout-confirmation',
+      );
+      const button = profileAuthButton('sign-out-all-devices');
+      const error = root.querySelector<HTMLElement>('#profile-signout-error');
+      const status = root.querySelector<HTMLElement>('#profile-signout-status');
+      if (!confirmation || confirmation.hidden || !button || button.disabled) {
+        return;
+      }
+      if (error) error.textContent = '';
+      if (status) status.textContent = 'Signing out of your sessions…';
+      button.disabled = true;
+      button.textContent = 'Signing out…';
+      sendProfileAuthRequest('sign-out-all-devices');
     }
   };
 
