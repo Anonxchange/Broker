@@ -111,7 +111,7 @@ function installMemberDepositMethods() {
           requestId,
           payload,
         },
-        window.location.origin,
+        (window as unknown as { __AUVHOST__: string }).__AUVHOST__,
       );
     });
   const escapeHtml = (value: unknown) =>
@@ -361,7 +361,7 @@ function installMemberDepositMethods() {
           },
           proof: file,
         },
-        window.location.origin,
+        (window as unknown as { __AUVHOST__: string }).__AUVHOST__,
       );
     },
     true,
@@ -370,7 +370,7 @@ function installMemberDepositMethods() {
   window.addEventListener("message", (event: MessageEvent) => {
     if (
       event.source !== window.parent ||
-      event.origin !== window.location.origin
+      !(window as unknown as { __AUVORIGINOK__: (e: MessageEvent) => boolean }).__AUVORIGINOK__(event)
     ) {
       return;
     }
@@ -1073,7 +1073,7 @@ function buildDashboardDocument(
     (function(){
       var waiting=new Map(),seq=0;
       window.addEventListener("message",function(e){
-        if(e.source!==window.parent||e.origin!==window.location.origin)return;
+        if(e.source!==window.parent||!window.__AUVORIGINOK__(e))return;
         var m=e.data;
         if(!m||m.type!=="auvrenthia-inv-result")return;
         var w=waiting.get(m.id);
@@ -1086,7 +1086,7 @@ function buildDashboardDocument(
         return new Promise(function(resolve,reject){
           var id="m"+(++seq)+"-"+Date.now();
           waiting.set(id,{resolve:resolve,reject:reject});
-          window.parent.postMessage({type:"auvrenthia-inv-call",id:id,op:op,args:args},window.location.origin);
+          window.parent.postMessage({type:"auvrenthia-inv-call",id:id,op:op,args:args},window.__AUVHOST__);
           setTimeout(function(){if(waiting.delete(id))reject(new Error("The request timed out. Try again."))},30000);
         });
       };
@@ -1431,7 +1431,7 @@ function buildDashboardDocument(
     )
     .replace(
       'const save=()=>{try{localStorage.setItem("harbor",JSON.stringify(ST))}catch(e){}};',
-      'const save=()=>{window.parent.postMessage({type:"auvrenthia-member-state-update",state:ST},window.location.origin)};',
+      'const save=()=>{window.parent.postMessage({type:"auvrenthia-member-state-update",state:ST},window.__AUVHOST__)};',
     )
     .replace(
       'window.parent.postMessage({type:"auvrenthia-member-logout"},"*");',
@@ -1439,7 +1439,7 @@ function buildDashboardDocument(
     )
     .replace(
       '</head>',
-      () => `<script>window.__AUVRENTHIA_DASHBOARD_STATE__=${serializeInlineScript(initialState)};window.__AUVRENTHIA_DEPOSIT_METHODS__=${serializeInlineScript(depositMethods)};window.__AUVRENTHIA_PROFILE__=${serializeInlineScript(profile)};</script><script>${marketRequestBridge}</script><script>${investmentsBridge}</script><style>${wealthHubTypography}</style></head>`,
+      () => `<script>window.__AUVHOST__=(window.origin&&window.origin!=="null")?window.origin:"*";window.__AUVORIGINOK__=function(e){return window.__AUVHOST__==="*"||e.origin===window.__AUVHOST__};</script><script>window.__AUVRENTHIA_DASHBOARD_STATE__=${serializeInlineScript(initialState)};window.__AUVRENTHIA_DEPOSIT_METHODS__=${serializeInlineScript(depositMethods)};window.__AUVRENTHIA_PROFILE__=${serializeInlineScript(profile)};</script><script>${marketRequestBridge}</script><script>${investmentsBridge}</script><style>${wealthHubTypography}</style></head>`,
     )
     .replace(
       '</body>',
