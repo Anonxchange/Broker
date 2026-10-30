@@ -1636,6 +1636,7 @@ function AppContent() {
     signUp,
     signInWithGoogle,
     signOut,
+    signOutEverywhere,
   } = useAuth();
 
   const authMode = location === '/signup' ? 'signup' : 'login';
@@ -1648,6 +1649,11 @@ function AppContent() {
       setLocation('/');
     }
   }, [setLocation, signOut]);
+
+  const handleSignOutEverywhere = useCallback(async () => {
+    await signOutEverywhere();
+    setLocation('/login');
+  }, [setLocation, signOutEverywhere]);
 
   const submitAuth = async (values: AuthFormValues) => {
     if (authMode === 'login') {
@@ -1814,6 +1820,7 @@ function AppContent() {
       <Suspense fallback={<SessionLoading />}>
         <DashboardPage
           onLogout={handleLogout}
+          onSignOutEverywhere={handleSignOutEverywhere}
           profile={profile}
           userId={session.user.id}
         />
