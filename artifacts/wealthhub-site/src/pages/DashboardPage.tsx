@@ -946,6 +946,10 @@ function buildDashboardDocument(
     .replace(/function renderKyc\(\)\{[^\n]*\}/, kycStatusRenderer)
     .replace('<title>Harbor – Investing</title>', '<title>Auvrenthia Markets</title>')
     .replace(
+      '["My plans","M3 17l6-6 4 4 8-8M15 7h6v6"],',
+      '["My plans","M3 17l6-6 4 4 8-8M15 7h6v6"],["Signals","M4 18l4-6 4 3 4-8 4 5M4 21h16"],',
+    )
+    .replace(
       '["Security and verification","M12 3l8',
       '["Profile","M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"],["Security and verification","M12 3l8',
     )
