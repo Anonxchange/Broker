@@ -1601,58 +1601,315 @@ export function installMemberDashboardTools() {
     })();
   };
 
+  // ---- Economic calendar --------------------------------------------------
+  type CalImpact = 'high' | 'medium' | 'low' | 'none';
+  type CalEvent = {
+    timestamp: number;
+    title: string;
+    currency: string;
+    impact: CalImpact;
+    actual: string;
+    forecast: string;
+    previous: string;
+    source: string;
+    sourceUrl: string | null;
+  };
+  const cal = {
+    events: [] as CalEvent[],
+    impact: 'all' as 'all' | 'high' | 'medium' | 'low',
+    range: 'all' as 'today' | 'week' | 'all',
+    currency: 'all',
+    state: 'loading' as 'loading' | 'ready' | 'error',
+    timer: 0 as ReturnType<typeof setInterval> | 0,
+  };
+
+  const calImpact = (value: unknown): CalImpact => {
+    const text = String(value ?? '').toLowerCase();
+    if (text.includes('high') || text === '3') return 'high';
+    if (text.includes('med') || text === '2') return 'medium';
+    if (text.includes('low') || text === '1') return 'low';
+    return 'none';
+  };
+  const calImpactLabel: Record<CalImpact, string> = {
+    high: 'High impact',
+    medium: 'Medium impact',
+    low: 'Low impact',
+    none: 'Impact not rated',
+  };
+  const calValue = (value: unknown) => {
+    if (value === null || value === undefined) return '—';
+    const text = String(value).trim();
+    return text ? text : '—';
+  };
+  const calCountdown = (target: number) => {
+    const minutes = Math.max(0, Math.round((target - Date.now()) / 60_000));
+    if (minutes < 1) return 'now';
+    const days = Math.floor(minutes / 1440);
+    const hours = Math.floor((minutes % 1440) / 60);
+    const rest = minutes % 60;
+    if (days) return `${days}d ${hours}h`;
+    if (hours) return `${hours}h ${rest}m`;
+    return `${rest}m`;
+  };
+  const calDayKey = (timestamp: number) => {
+    const date = new Date(timestamp);
+    return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+  };
+  const calDayLabel = (timestamp: number) => {
+    const today = Date.now();
+    if (calDayKey(timestamp) === calDayKey(today)) return 'Today';
+    if (calDayKey(timestamp) === calDayKey(today + 86_400_000)) return 'Tomorrow';
+    return new Date(timestamp).toLocaleDateString(undefined, { weekday: 'long' });
+  };
+
+  const calFiltered = () => {
+    const now = Date.now();
+    return cal.events.filter((event) => {
+      if (cal.impact !== 'all' && event.impact !== cal.impact) return false;
+      if (cal.currency !== 'all' && event.currency !== cal.currency) return false;
+      if (cal.range === 'today' && calDayKey(event.timestamp) !== calDayKey(now)) return false;
+      if (cal.range === 'week' && event.timestamp > now + 7 * 86_400_000) return false;
+      return true;
+    });
+  };
+
+  const updateCalendarCountdown = () => {
+    const node = root.querySelector<HTMLElement>('#cal-next-count');
+    if (!node || page !== 'Economic calendar') {
+      if (cal.timer) clearInterval(cal.timer);
+      cal.timer = 0;
+      return;
+    }
+    const target = Number(node.dataset.target);
+    if (Number.isFinite(target)) node.textContent = calCountdown(target);
+  };
+
+  const drawCalendar = () => {
+    if (page !== 'Economic calendar') return;
+    const header = `<div class="head"><div><div class="lbl">Upcoming public releases</div><div class="bal">Economic calendar</div></div></div>`;
+    if (cal.state === 'loading') {
+      root.innerHTML = `${header}<p class="note">Loading upcoming economic events…</p>`;
+      return;
+    }
+    if (cal.state === 'error') {
+      root.innerHTML = `${header}<p class="note" role="alert">The economic calendar is temporarily unavailable from the public provider. Try again later.</p><button class="btn alt" type="button" data-tool-action="cal-retry">Try again</button>`;
+      return;
+    }
+
+    const filtered = calFiltered();
+    const currencies = Array.from(new Set(cal.events.map((event) => event.currency))).sort();
+    if (cal.currency !== 'all' && !currencies.includes(cal.currency)) cal.currency = 'all';
+    const highCount = filtered.filter((event) => event.impact === 'high').length;
+    const next = filtered[0];
+
+    const chip = (action: string, value: string, label: string, current: string, dot = '') =>
+      `<button type="button" class="${value === current ? 'on' : ''}" data-tool-action="${action}" data-value="${value}" aria-pressed="${value === current}">${dot ? `<i class="cal-dot ${dot}"></i>` : ''}${label}</button>`;
+
+    const groups: { key: string; timestamp: number; rows: CalEvent[] }[] = [];
+    filtered.forEach((event) => {
+      const key = calDayKey(event.timestamp);
+      const group = groups[groups.length - 1];
+      if (group && group.key === key) group.rows.push(event);
+      else groups.push({ key, timestamp: event.timestamp, rows: [event] });
+    });
+
+    const rowMarkup = (event: CalEvent) => {
+      const time = new Date(event.timestamp).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      });
+      const source = event.sourceUrl
+        ? `<a href="${escapeHtml(event.sourceUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(event.source)}</a>`
+        : escapeHtml(event.source);
+      return `<div class="cal-row" role="row">
+        <span class="cal-time">${escapeHtml(time)}</span>
+        <span class="cal-curwrap"><i class="cal-cur">${escapeHtml(event.currency)}</i></span>
+        <div class="cal-ev"><b>${escapeHtml(event.title)}</b><small>${source}</small></div>
+        <span class="cal-impact imp-${event.impact}" role="img" aria-label="${calImpactLabel[event.impact]}"><i></i><i></i><i></i></span>
+        <span class="cal-num cal-actual" data-label="Actual">${escapeHtml(event.actual)}</span>
+        <span class="cal-num" data-label="Forecast">${escapeHtml(event.forecast)}</span>
+        <span class="cal-num" data-label="Previous">${escapeHtml(event.previous)}</span>
+      </div>`;
+    };
+
+    const body = groups.length
+      ? groups
+          .map(
+            (group) =>
+              `<div class="cal-day"><b>${escapeHtml(calDayLabel(group.timestamp))}</b><span>${escapeHtml(new Date(group.timestamp).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }))} · ${group.rows.length} event${group.rows.length === 1 ? '' : 's'}</span></div>${group.rows.map(rowMarkup).join('')}`,
+          )
+          .join('')
+      : '<div class="help-empty"><b>No events match these filters</b><p>Try another impact level, currency or date range.</p></div>';
+
+    root.innerHTML = `${header}
+      <div class="cal">
+        <div class="cal-summary">
+          <div class="cal-tile"><span>Events shown</span><b>${filtered.length}</b></div>
+          <div class="cal-tile"><span>High impact</span><b class="${highCount ? 'dn' : ''}">${highCount}</b></div>
+          <div class="cal-tile cal-next"><span>Next event</span>${
+            next
+              ? `<b><span id="cal-next-count" data-target="${next.timestamp}">${calCountdown(next.timestamp)}</span></b><small>${escapeHtml(next.currency)} · ${escapeHtml(next.title)}</small>`
+              : '<b>—</b><small>Nothing scheduled</small>'
+          }</div>
+        </div>
+        <div class="cal-filters">
+          <div class="cal-chips" role="group" aria-label="Impact">
+            ${chip('cal-impact', 'all', 'All', cal.impact)}${chip('cal-impact', 'high', 'High', cal.impact, 'imp-high')}${chip('cal-impact', 'medium', 'Medium', cal.impact, 'imp-medium')}${chip('cal-impact', 'low', 'Low', cal.impact, 'imp-low')}
+          </div>
+          <div class="cal-chips" role="group" aria-label="Date range">
+            ${chip('cal-range', 'today', 'Today', cal.range)}${chip('cal-range', 'week', 'Next 7 days', cal.range)}${chip('cal-range', 'all', 'All upcoming', cal.range)}
+          </div>
+          <label class="cal-select"><span>Currency</span><select id="cal-currency"><option value="all">All</option>${currencies
+            .map((currency) => `<option value="${escapeHtml(currency)}"${currency === cal.currency ? ' selected' : ''}>${escapeHtml(currency)}</option>`)
+            .join('')}</select></label>
+        </div>
+        <div class="cal-table" role="table" aria-label="Economic calendar">
+          <div class="cal-head" role="row"><span>Time</span><span>Cur.</span><span>Event</span><span>Impact</span><span class="r">Actual</span><span class="r">Forecast</span><span class="r">Previous</span></div>
+          ${body}
+        </div>
+        <p class="note">Times are shown in your local time (${escapeHtml(fxOffset())}). Confirm releases with the listed source. Calendar data by <a href="https://biquote.io/" target="_blank" rel="noopener noreferrer">biquote</a>.</p>
+      </div>`;
+    if (cal.timer) clearInterval(cal.timer);
+    cal.timer = setInterval(updateCalendarCountdown, 30_000);
+  };
+
   const renderCalendar = () => {
     const requestId = ++publicContentRequest;
-    const header = `<div class="head"><div><div class="lbl">Upcoming public releases</div><div class="bal">Economic calendar</div></div></div>`;
-    root.innerHTML = `${header}<p class="note">Loading upcoming economic events…</p>`;
+    cal.state = 'loading';
+    drawCalendar();
     void (async () => {
       try {
         const payload = await requestPublicJson(
           'economic-calendar',
-          'https://biquote.io/api/Calendar/upcoming?limit=50',
+          'https://biquote.io/api/Calendar/upcoming?limit=100',
         );
         if (!Array.isArray(payload)) {
           throw new Error('The public calendar provider returned an unexpected response.');
         }
         if (requestId !== publicContentRequest || page !== 'Economic calendar') return;
-
         const now = Date.now();
-        const events = payload.flatMap((value) => {
-          if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
-          const event = value as Record<string, unknown>;
-          const time = typeof event.time === 'string' ? event.time : '';
-          const timestamp = new Date(time).getTime();
-          const title = String(event.name ?? event.title ?? '').trim();
-          if (!title || !Number.isFinite(timestamp) || timestamp < now) return [];
-          const currency = String(event.currency ?? event.countryCode ?? 'Global');
-          const importance = String(event.importance ?? '—');
-          const source = String(event.source ?? 'Economic calendar');
-          const sourceUrl = safeExternalUrl(event.sourceUrl);
-          const eventFacts = (label: string, item: unknown) =>
-            `<span><small>${label}</small><b>${escapeHtml(item == null ? '—' : String(item))}</b></span>`;
-          return [
-            {
-              timestamp,
-              markup: `<article class="member-tool-card">
-                <div class="member-tool-calendar-meta"><strong>${escapeHtml(currency)} · ${escapeHtml(importance)} impact</strong><time datetime="${escapeHtml(time)}">${escapeHtml(formatPublicDate(time))}</time></div>
-                <h3>${escapeHtml(title)}</h3>
-                <div class="member-tool-calendar-facts">${eventFacts('Actual', event.actual)}${eventFacts('Forecast', event.forecast)}${eventFacts('Previous', event.previous)}</div>
-                <p class="member-tool-calendar-source">${sourceUrl ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(source)}</a>` : escapeHtml(source)}</p>
-              </article>`,
-            },
-          ];
-        });
-        events.sort((first, second) => first.timestamp - second.timestamp);
-        const rows = events.slice(0, 30).map((event) => event.markup);
-        root.innerHTML = `${header}
-          <p class="note">Times are shown in your browser’s local time. Confirm releases with the listed source. Calendar data by <a href="https://biquote.io/" target="_blank" rel="noopener noreferrer">biquote</a>.</p>
-          <div class="member-tool-list">${rows.length ? rows.join('') : '<p class="note">No upcoming events were returned.</p>'}</div>`;
+        cal.events = payload
+          .flatMap((value): CalEvent[] => {
+            if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+            const event = value as Record<string, unknown>;
+            const timestamp = new Date(typeof event.time === 'string' ? event.time : '').getTime();
+            const title = String(event.name ?? event.title ?? '').trim();
+            if (!title || !Number.isFinite(timestamp) || timestamp < now) return [];
+            return [
+              {
+                timestamp,
+                title,
+                currency: String(event.currency ?? event.countryCode ?? 'Global').trim() || 'Global',
+                impact: calImpact(event.importance),
+                actual: calValue(event.actual),
+                forecast: calValue(event.forecast),
+                previous: calValue(event.previous),
+                source: String(event.source ?? 'Economic calendar'),
+                sourceUrl: safeExternalUrl(event.sourceUrl),
+              },
+            ];
+          })
+          .sort((first, second) => first.timestamp - second.timestamp);
+        cal.state = 'ready';
       } catch {
         if (requestId !== publicContentRequest || page !== 'Economic calendar') return;
-        root.innerHTML = `${header}<p class="note" role="alert">The economic calendar is temporarily unavailable from the public provider. Try again later.</p>`;
+        cal.state = 'error';
       }
+      drawCalendar();
     })();
   };
+
+  const handleCalendarAction = (action: string, button: HTMLElement) => {
+    const value = button.dataset.value || '';
+    if (action === 'cal-impact' && ['all', 'high', 'medium', 'low'].includes(value)) {
+      cal.impact = value as typeof cal.impact;
+    } else if (action === 'cal-range' && ['today', 'week', 'all'].includes(value)) {
+      cal.range = value as typeof cal.range;
+    } else if (action === 'cal-retry') {
+      renderCalendar();
+      return;
+    } else {
+      return;
+    }
+    drawCalendar();
+  };
+
+  const handleCalendarChange = (event: Event) => {
+    const target = event.target;
+    if (target instanceof HTMLSelectElement && target.id === 'cal-currency') {
+      cal.currency = target.value;
+      drawCalendar();
+    }
+  };
+
+  const calendarStyle = document.createElement('style');
+  calendarStyle.textContent = `
+    .cal{max-width:1100px}
+    .cal{--cal-mid:#D99A00}
+    .cal-summary{display:grid;grid-template-columns:1fr 1fr 2fr;margin-top:22px;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+    .cal-tile{display:grid;gap:3px;padding:14px 18px;min-width:0}
+    .cal-tile+.cal-tile{border-left:1px solid var(--line)}
+    .cal-tile span{color:var(--mute);font-size:12px}
+    .cal-tile b{font-size:22px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+    .cal-tile small{color:var(--mute);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .cal-filters{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin:18px 0 14px}
+    .cal-chips{display:flex;gap:3px;padding:3px;border-radius:11px;background:color-mix(in srgb,var(--ink) 7%,transparent);max-width:100%;overflow-x:auto}
+    .cal-chips button{display:inline-flex;align-items:center;gap:7px;padding:6px 13px;border-radius:8px;color:var(--mute);font-size:13px;font-weight:700;white-space:nowrap}
+    .cal-chips button:hover{color:var(--ink)}
+    .cal-chips button.on{background:var(--bg);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.2)}
+    .cal-dot{display:inline-block;width:8px;height:8px;border-radius:50%}
+    .cal-dot.imp-high{background:var(--dn)}
+    .cal-dot.imp-medium{background:var(--cal-mid)}
+    .cal-dot.imp-low{background:var(--mute)}
+    .cal-select{display:inline-flex;align-items:center;gap:8px;margin-left:auto;color:var(--mute);font-size:13px}
+    .cal-select select{padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font:inherit;font-weight:600}
+    .cal-table{border:1px solid var(--line);border-radius:16px;overflow:hidden}
+    .cal-head,.cal-row{display:grid;grid-template-columns:64px 66px minmax(0,1fr) 70px 92px 92px 92px;align-items:center;gap:12px;padding:12px 18px}
+    .cal-head{color:var(--mute);font-size:12px;font-weight:600;border-bottom:1px solid var(--line)}
+    .cal-head .r,.cal-num{text-align:right}
+    .cal-day{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:10px 18px;background:color-mix(in srgb,var(--ink) 5%,transparent);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+    .cal-head+.cal-day{border-top:0}
+    .cal-day b{font-size:14px}
+    .cal-day span{color:var(--mute);font-size:12px}
+    .cal-row{border-top:1px solid var(--line)}
+    .cal-day+.cal-row{border-top:0}
+    .cal-row:hover{background:color-mix(in srgb,var(--ink) 4%,transparent)}
+    .cal-time{font-weight:700;font-variant-numeric:tabular-nums}
+    .cal-cur{display:inline-block;padding:3px 9px;border-radius:7px;background:color-mix(in srgb,var(--brand) 13%,transparent);color:var(--brand);font-size:12px;font-style:normal;font-weight:800}
+    .cal-ev{display:grid;gap:2px;min-width:0}
+    .cal-ev b{line-height:1.35}
+    .cal-ev small{color:var(--mute);font-size:12px;font-weight:500}
+    .cal-ev small a{color:inherit;text-decoration:underline;text-underline-offset:2px}
+    .cal-impact{display:inline-flex;gap:3px;align-items:flex-end;height:16px}
+    .cal-impact i{display:block;width:5px;border-radius:2px;background:var(--line)}
+    .cal-impact i:nth-child(1){height:7px}
+    .cal-impact i:nth-child(2){height:11px}
+    .cal-impact i:nth-child(3){height:16px}
+    .cal-impact.imp-high i{background:var(--dn)}
+    .cal-impact.imp-medium i:nth-child(-n+2){background:var(--cal-mid)}
+    .cal-impact.imp-low i:nth-child(1){background:var(--mute)}
+    .cal-num{font-variant-numeric:tabular-nums;color:var(--mute);font-weight:600}
+    .cal-actual{color:var(--ink);font-weight:800}
+    @media(max-width:760px){
+      .cal-summary{grid-template-columns:1fr 1fr}
+      .cal-next{grid-column:1/-1;border-left:0!important;border-top:1px solid var(--line)}
+      .cal-select{margin-left:0;width:100%;justify-content:space-between}
+      .cal-table{margin-inline:calc(-1 * clamp(18px,3.5vw,44px));border-radius:0;border-left:0;border-right:0}
+      .cal-head{display:none}
+      .cal-row{grid-template-columns:auto auto 1fr;grid-template-areas:"time cur imp" "ev ev ev" "act fc prev";row-gap:10px;padding:14px 18px}
+      .cal-time{grid-area:time}
+      .cal-curwrap{grid-area:cur}
+      .cal-impact{grid-area:imp;justify-self:end}
+      .cal-ev{grid-area:ev}
+      .cal-num{text-align:left;display:grid;gap:2px}
+      .cal-num::before{content:attr(data-label);color:var(--mute);font-size:11px;font-weight:500}
+      .cal-num[data-label="Actual"]{grid-area:act}
+      .cal-num[data-label="Forecast"]{grid-area:fc}
+      .cal-num[data-label="Previous"]{grid-area:prev}
+    }
+  `;
+  document.head.appendChild(calendarStyle);
 
   // ---- Market terminal: Forex, Crypto, Commodities (live quotes) --------
   // The chart is fed only by real TradingView quotes (polled every few
@@ -1674,6 +1931,47 @@ export function installMemberDashboardTools() {
     pairs: FxPair[];
   };
   const FX_MARKETS: Record<string, FxMarket> = {
+    Stocks: {
+      chip: 'US equities · market hours',
+      scanner: 'america',
+      category: 'stocks',
+      listTitle: 'US stocks',
+      note: 'Stock quotes are US-listed shares from TradingView and may be delayed. US markets trade 9:30 to 16:00 New York time on weekdays, so prices pause outside those hours.',
+      decimals: () => 2,
+      pairs: [
+        { symbol: 'AAPL', name: 'Apple Inc.', ticker: 'NASDAQ:AAPL', history: 'AAPL' },
+        { symbol: 'MSFT', name: 'Microsoft', ticker: 'NASDAQ:MSFT', history: 'MSFT' },
+        { symbol: 'NVDA', name: 'NVIDIA', ticker: 'NASDAQ:NVDA', history: 'NVDA' },
+        { symbol: 'AMZN', name: 'Amazon', ticker: 'NASDAQ:AMZN', history: 'AMZN' },
+        { symbol: 'TSLA', name: 'Tesla', ticker: 'NASDAQ:TSLA', history: 'TSLA' },
+        { symbol: 'GOOGL', name: 'Alphabet (Class A)', ticker: 'NASDAQ:GOOGL', history: 'GOOGL' },
+        { symbol: 'META', name: 'Meta Platforms', ticker: 'NASDAQ:META', history: 'META' },
+        { symbol: 'NFLX', name: 'Netflix', ticker: 'NASDAQ:NFLX', history: 'NFLX' },
+        { symbol: 'AMD', name: 'Advanced Micro Devices', ticker: 'NASDAQ:AMD', history: 'AMD' },
+        { symbol: 'JPM', name: 'JPMorgan Chase', ticker: 'NYSE:JPM', history: 'JPM' },
+        { symbol: 'V', name: 'Visa', ticker: 'NYSE:V', history: 'V' },
+      ],
+    },
+    ETFs: {
+      chip: 'Index & sector funds · market hours',
+      scanner: 'america',
+      category: 'etfs',
+      listTitle: 'ETFs',
+      note: 'ETF quotes are US-listed funds from TradingView and may be delayed. US markets trade 9:30 to 16:00 New York time on weekdays, so prices pause outside those hours.',
+      decimals: () => 2,
+      pairs: [
+        { symbol: 'VOO', name: 'Vanguard S&P 500 ETF', ticker: 'AMEX:VOO', history: 'VOO' },
+        { symbol: 'QQQ', name: 'Invesco QQQ Trust', ticker: 'NASDAQ:QQQ', history: 'QQQ' },
+        { symbol: 'VTI', name: 'Vanguard Total Stock Market ETF', ticker: 'AMEX:VTI', history: 'VTI' },
+        { symbol: 'SPY', name: 'SPDR S&P 500 ETF', ticker: 'AMEX:SPY', history: 'SPY' },
+        { symbol: 'IVV', name: 'iShares Core S&P 500 ETF', ticker: 'AMEX:IVV', history: 'IVV' },
+        { symbol: 'IWM', name: 'iShares Russell 2000 ETF', ticker: 'AMEX:IWM', history: 'IWM' },
+        { symbol: 'DIA', name: 'SPDR Dow Jones Industrial Average ETF', ticker: 'AMEX:DIA', history: 'DIA' },
+        { symbol: 'GLD', name: 'SPDR Gold Shares', ticker: 'AMEX:GLD', history: 'GLD' },
+        { symbol: 'XLF', name: 'Financial Select Sector SPDR', ticker: 'AMEX:XLF', history: 'XLF' },
+        { symbol: 'ARKK', name: 'ARK Innovation ETF', ticker: 'AMEX:ARKK', history: 'ARKK' },
+      ],
+    },
     Forex: {
       chip: 'Currency pairs · weekdays',
       scanner: 'forex',
@@ -1750,7 +2048,7 @@ export function installMemberDashboardTools() {
   };
   const fx = {
     market: 'Forex',
-    symbols: { Forex: 'EUR/USD', Crypto: 'BTC', Commodities: 'XAU' } as Record<string, string>,
+    symbols: { Stocks: 'AAPL', ETFs: 'VOO', Forex: 'EUR/USD', Crypto: 'BTC', Commodities: 'XAU' } as Record<string, string>,
     style: 'line' as 'line' | 'candles',
     ticks: [] as FxTick[],
     candles: [] as FxCandle[],
@@ -2655,6 +2953,7 @@ export function installMemberDashboardTools() {
       if (page === 'Screener') drawScreenerRows();
       else if (page === 'Statements and tax') handleStatementsChange(event);
       else if (FX_MARKETS[page]) handleForexChange(event);
+      else if (page === 'Economic calendar') handleCalendarChange(event);
       else if (page === 'Profile' && event.target instanceof HTMLInputElement && event.target.id === 'profile-avatar-input') {
         handleProfileAvatar(event.target);
       }
@@ -2734,6 +3033,8 @@ export function installMemberDashboardTools() {
         handleSignalAction(button);
       } else if (action?.startsWith('profile-')) {
         handleProfileAction(action);
+      } else if (action?.startsWith('cal-')) {
+        handleCalendarAction(action, button);
       } else if (action?.startsWith('fx-')) {
         handleForexAction(action, button);
       } else if (action === 'copy-referral') {
