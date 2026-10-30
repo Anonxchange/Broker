@@ -403,60 +403,354 @@ export function installMemberDashboardTools() {
 
   const csvCell = (value: unknown) =>
     `"${String(value ?? '').replace(/"/g, '""')}"`;
-  const downloadActivity = () => {
+
+  // ---- Statements and tax (frontend only) -------------------------------
+  // Statements are built from the activity saved in the dashboard state
+  // (ST.tx and ST.depositRequests). Tax documents are not connected yet:
+  // fill taxDocuments from your database and they will be listed per year.
+  type StatementKind = 'deposit' | 'withdrawal' | 'request';
+  type StatementRecord = {
+    id: string;
+    kind: StatementKind;
+    t: number;
+    asset: string;
+    network: string;
+    amount: number;
+    usd: number;
+    status: string;
+  };
+  const taxDocuments: { id: string; year: number; name: string; type: string; url: string }[] = [];
+
+  const STATEMENT_PAGE_SIZE = 25;
+  const statementDefaults = { period: '90d', type: 'all', asset: 'all', status: 'all', from: '', to: '' };
+  const statementFilters = { ...statementDefaults };
+  let statementLimit = STATEMENT_PAGE_SIZE;
+  let statementsTab: 'statements' | 'tax' = 'statements';
+  let taxYear = new Date().getFullYear();
+
+  const kindLabel: Record<StatementKind, string> = {
+    deposit: 'Deposit',
+    withdrawal: 'Withdrawal',
+    request: 'Deposit request',
+  };
+
+  const statementRecords = (): StatementRecord[] => {
+    const toRecord = (
+      raw: unknown,
+      kind: (value: Record<string, unknown>) => StatementKind,
+      fallbackStatus: string,
+      prefix: string,
+    ): StatementRecord[] => {
+      if (!raw || typeof raw !== 'object') return [];
+      const value = raw as Record<string, unknown>;
+      const t = typeof value.t === 'number' && Number.isFinite(value.t) ? value.t : 0;
+      const amount = Number(value.amt);
+      const usd = Number(value.usd);
+      return [
+        {
+          id: String(value.id ?? `${prefix}-${t}`),
+          kind: kind(value),
+          t,
+          asset: String(value.a ?? ''),
+          network: String(value.net ?? ''),
+          amount: Number.isFinite(amount) ? amount : 0,
+          usd: Number.isFinite(usd) ? usd : 0,
+          status: String(value.status || fallbackStatus),
+        },
+      ];
+    };
+    const recorded = (Array.isArray(ST.tx) ? ST.tx : []).flatMap((raw) =>
+      toRecord(raw, (value) => (value.k === 'dep' ? 'deposit' : 'withdrawal'), 'Recorded', 'TX'),
+    );
+    const requests = (Array.isArray(ST.depositRequests) ? ST.depositRequests : []).flatMap((raw) =>
+      toRecord(raw, () => 'request', 'Pending', 'REQ'),
+    );
+    return [...recorded, ...requests].sort((first, second) => second.t - first.t);
+  };
+
+  const statusText = (status: string) => {
+    const text = status.replace(/[_-]+/g, ' ').trim();
+    return text ? text.charAt(0).toUpperCase() + text.slice(1) : 'Recorded';
+  };
+  const statusTone = (status: string) => {
+    const value = status.toLowerCase();
+    if (/(reject|fail|declin|denied|cancel)/.test(value)) return 'r3';
+    if (/(pending|review|process)/.test(value)) return 'r2';
+    if (/(complete|approv|credit|record|success|paid)/.test(value)) return 'r1';
+    return 'security-badge-muted';
+  };
+
+  const periodRange = (): [number, number] => {
+    const day = 86_400_000;
+    const year = new Date().getFullYear();
+    switch (statementFilters.period) {
+      case '30d':
+        return [Date.now() - 30 * day, Infinity];
+      case '90d':
+        return [Date.now() - 90 * day, Infinity];
+      case 'ytd':
+        return [new Date(year, 0, 1).getTime(), Infinity];
+      case 'lastyear':
+        return [new Date(year - 1, 0, 1).getTime(), new Date(year, 0, 1).getTime() - 1];
+      case 'custom': {
+        const from = statementFilters.from ? new Date(`${statementFilters.from}T00:00:00`).getTime() : -Infinity;
+        const to = statementFilters.to ? new Date(`${statementFilters.to}T23:59:59.999`).getTime() : Infinity;
+        return [Number.isNaN(from) ? -Infinity : from, Number.isNaN(to) ? Infinity : to];
+      }
+      default:
+        return [-Infinity, Infinity];
+    }
+  };
+
+  const filteredStatementRecords = (all: StatementRecord[]) => {
+    const [from, to] = periodRange();
+    return all.filter(
+      (record) =>
+        record.t >= from &&
+        record.t <= to &&
+        (statementFilters.type === 'all' || record.kind === statementFilters.type) &&
+        (statementFilters.asset === 'all' || record.asset === statementFilters.asset) &&
+        (statementFilters.status === 'all' || record.status.toLowerCase() === statementFilters.status),
+    );
+  };
+
+  const summarizeStatement = (records: StatementRecord[]) => {
+    const totals = { deposits: 0, depositCount: 0, withdrawals: 0, withdrawalCount: 0, requestCount: 0, reviewCount: 0, reviewUsd: 0 };
+    records.forEach((record) => {
+      if (record.kind === 'deposit') {
+        totals.deposits += record.usd;
+        totals.depositCount += 1;
+      } else if (record.kind === 'withdrawal') {
+        totals.withdrawals += record.usd;
+        totals.withdrawalCount += 1;
+      } else {
+        totals.requestCount += 1;
+        if (statusTone(record.status) === 'r2') {
+          totals.reviewCount += 1;
+          totals.reviewUsd += record.usd;
+        }
+      }
+    });
+    return totals;
+  };
+
+  const summaryTiles = (records: StatementRecord[]) => {
+    const totals = summarizeStatement(records);
+    const tile = (label: string, value: string, note: string) =>
+      `<div class="statement-tile"><span>${label}</span><b>${escapeHtml(value)}</b><small>${escapeHtml(note)}</small></div>`;
+    const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
+    return `<div class="statement-summary">
+      ${tile('Deposits', fmt(totals.deposits), plural(totals.depositCount, 'record'))}
+      ${tile('Withdrawals', fmt(totals.withdrawals), plural(totals.withdrawalCount, 'record'))}
+      ${tile('Net flow', `${totals.deposits - totals.withdrawals < 0 ? '−' : ''}${fmt(Math.abs(totals.deposits - totals.withdrawals))}`, 'Deposits minus withdrawals')}
+      ${tile('Requests in review', String(totals.reviewCount), totals.reviewCount ? `≈ ${fmt(totals.reviewUsd)} estimated` : 'No requests pending')}
+    </div>`;
+  };
+
+  const formatAmount = (value: number) =>
+    value.toLocaleString(undefined, { maximumFractionDigits: 8 });
+
+  const statementRow = (record: StatementRecord) => {
+    const date = record.t ? new Date(record.t) : null;
+    const usd =
+      record.kind === 'request'
+        ? `<span class="statement-muted">≈ ${escapeHtml(fmt(record.usd))}</span>`
+        : record.kind === 'deposit'
+          ? `<span class="statement-in">+${escapeHtml(fmt(record.usd))}</span>`
+          : `<span class="statement-out">−${escapeHtml(fmt(record.usd))}</span>`;
+    return `<tr>
+      <td><div>${date ? escapeHtml(date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })) : 'Unknown date'}</div><small>${date ? escapeHtml(date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })) : ''}</small></td>
+      <td><b>${kindLabel[record.kind]}</b><small>${escapeHtml(record.asset)}${record.network ? ` · ${escapeHtml(record.network)}` : ''}</small></td>
+      <td class="statement-ref">${escapeHtml(record.id)}</td>
+      <td><span class="risk ${statusTone(record.status)}">${escapeHtml(statusText(record.status))}</span></td>
+      <td class="statement-num">${escapeHtml(formatAmount(record.amount))} ${escapeHtml(record.asset)}</td>
+      <td class="statement-num">${usd}</td>
+    </tr>`;
+  };
+
+  const downloadStatement = (records: StatementRecord[], name: string) => {
     const rows: unknown[][] = [
       ['Record type', 'ID', 'Date', 'Asset', 'Network', 'Amount', 'USD estimate', 'Status'],
+      ...records.map((record) => [
+        kindLabel[record.kind],
+        record.id,
+        record.t ? new Date(record.t).toISOString() : '',
+        record.asset,
+        record.network,
+        record.amount,
+        record.usd,
+        statusText(record.status),
+      ]),
     ];
-    const transactions = Array.isArray(ST.tx) ? ST.tx : [];
-    transactions.forEach((raw) => {
-      if (!raw || typeof raw !== 'object') return;
-      const value = raw as Record<string, unknown>;
-      rows.push([
-        'Recorded activity',
-        value.id,
-        typeof value.t === 'number' ? new Date(value.t).toISOString() : '',
-        value.a,
-        value.net,
-        value.amt,
-        value.usd,
-        value.status || 'Recorded',
-      ]);
-    });
-    const requests = Array.isArray(ST.depositRequests) ? ST.depositRequests : [];
-    requests.forEach((raw) => {
-      if (!raw || typeof raw !== 'object') return;
-      const value = raw as Record<string, unknown>;
-      rows.push([
-        'Deposit request',
-        value.id,
-        typeof value.t === 'number' ? new Date(value.t).toISOString() : '',
-        value.a,
-        value.net,
-        value.amt,
-        value.usd,
-        value.status || 'Pending',
-      ]);
-    });
     const csv = rows.map((row) => row.map(csvCell).join(',')).join('\r\n');
-    const url = URL.createObjectURL(
-      new Blob([csv], { type: 'text/csv;charset=utf-8' }),
-    );
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
     link.href = url;
-    link.download = `account-activity-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.download = `${name}-${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(link);
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
   };
 
+  const optionList = (options: [string, string][], current: string) =>
+    options
+      .map(([value, label]) => `<option value="${escapeHtml(value)}"${value === current ? ' selected' : ''}>${escapeHtml(label)}</option>`)
+      .join('');
+
+  const drawStatementResults = () => {
+    const container = root.querySelector<HTMLElement>('#statement-results');
+    if (!container) return;
+    const records = filteredStatementRecords(statementRecords());
+    const visible = records.slice(0, statementLimit);
+    const table = records.length
+      ? `<div class="statement-table-wrap"><table class="statement-table">
+          <thead><tr><th scope="col">Date</th><th scope="col">Description</th><th scope="col">Reference</th><th scope="col">Status</th><th scope="col" class="statement-num">Amount</th><th scope="col" class="statement-num">Est. USD</th></tr></thead>
+          <tbody>${visible.map(statementRow).join('')}</tbody></table></div>
+        <p class="hint">Showing ${visible.length} of ${records.length} record${records.length === 1 ? '' : 's'}. USD values are estimates saved with each record.</p>
+        ${records.length > visible.length ? '<button class="btn alt" type="button" data-tool-action="st-more">Show more</button>' : ''}`
+      : '<div class="mp"><div class="help-empty"><b>No records match these filters</b><p>Try a longer period or reset the filters.</p></div></div>';
+    container.innerHTML = `${summaryTiles(records)}<h2 class="sec">Transactions</h2>${table}
+      <p class="note">This statement lists the transactions and deposit requests saved in your dashboard. It is for your records only and is not an official account statement, tax document, or tax advice. Investment-plan projections are not included as completed transactions.</p>`;
+  };
+
+  const taxYears = (all: StatementRecord[]) => {
+    const current = new Date().getFullYear();
+    const years = new Set<number>([current, current - 1]);
+    all.forEach((record) => {
+      if (record.t) years.add(new Date(record.t).getFullYear());
+    });
+    return Array.from(years).sort((first, second) => second - first);
+  };
+
+  const taxYearRecords = (all: StatementRecord[]) =>
+    all.filter((record) => record.t && new Date(record.t).getFullYear() === taxYear);
+
+  const drawTaxResults = () => {
+    const container = root.querySelector<HTMLElement>('#tax-results');
+    if (!container) return;
+    const records = taxYearRecords(statementRecords());
+    const docs = taxDocuments.filter((doc) => doc.year === taxYear);
+    const docsMarkup = docs.length
+      ? docs
+          .map((doc) => {
+            const url = safeExternalUrl(doc.url);
+            return `<div class="help-ticket-row"><div class="help-ticket-main"><b>${escapeHtml(doc.name)}</b><small>${escapeHtml(doc.type)} · Tax year ${doc.year}</small></div>${url ? `<a class="btn alt" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Download</a>` : '<span class="risk security-badge-muted">Unavailable</span>'}</div>`;
+          })
+          .join('')
+      : `<div class="help-empty"><b>No tax documents for ${taxYear}</b><p>Documents will appear here when they are published for this tax year.</p></div>`;
+    container.innerHTML = `<h2 class="sec">${taxYear} activity summary</h2>
+      ${summaryTiles(records)}
+      <div class="deposit-actions"><button class="btn alt" type="button" data-tool-action="st-export-year"${records.length ? '' : ' disabled aria-disabled="true"'}>Download ${taxYear} summary (CSV)</button></div>
+      <h2 class="sec">Tax documents</h2>
+      <div class="mp help-tickets">${docsMarkup}</div>
+      <div class="member-tool-card"><h3>Important</h3><p>This summary is for your records only. It is not tax advice, and it may not include all activity relevant to your tax situation. USD values are estimates saved with each record. Tax rules depend on where you live, so speak with a qualified tax professional.</p></div>`;
+  };
+
+  const drawStatementsBody = () => {
+    const body = root.querySelector<HTMLElement>('#statements-body');
+    if (!body) return;
+    const all = statementRecords();
+
+    if (statementsTab === 'tax') {
+      const years = taxYears(all);
+      if (!years.includes(taxYear)) taxYear = years[0];
+      body.innerHTML = `<div class="mp statement-card">
+          <div class="mph"><div><h3>Tax year</h3><small>Choose the year you want to review.</small></div></div>
+          <label class="fl" for="st-year">Tax year</label>
+          <select class="sel statement-year" id="st-year">${optionList(years.map((year) => [String(year), String(year)]), String(taxYear))}</select>
+        </div><div id="tax-results"></div>`;
+      drawTaxResults();
+      return;
+    }
+
+    const assets = Array.from(new Set(all.map((record) => record.asset).filter(Boolean))).sort();
+    const statuses = Array.from(new Set(all.map((record) => record.status.toLowerCase()))).sort();
+    if (statementFilters.asset !== 'all' && !assets.includes(statementFilters.asset)) statementFilters.asset = 'all';
+    if (statementFilters.status !== 'all' && !statuses.includes(statementFilters.status)) statementFilters.status = 'all';
+    body.innerHTML = `<div class="mp statement-card">
+        <div class="mph"><div><h3>Filter your statement</h3><small>Narrow the period, type, asset, or status.</small></div></div>
+        <div class="statement-filters">
+          <div><label class="fl" for="st-period">Period</label><select class="sel" id="st-period">${optionList([['30d', 'Last 30 days'], ['90d', 'Last 90 days'], ['ytd', 'Year to date'], ['lastyear', 'Last year'], ['all', 'All time'], ['custom', 'Custom range']], statementFilters.period)}</select></div>
+          <div><label class="fl" for="st-type">Type</label><select class="sel" id="st-type">${optionList([['all', 'All activity'], ['deposit', 'Deposits'], ['withdrawal', 'Withdrawals'], ['request', 'Deposit requests']], statementFilters.type)}</select></div>
+          <div><label class="fl" for="st-asset">Asset</label><select class="sel" id="st-asset">${optionList([['all', 'All assets'], ...assets.map((asset): [string, string] => [asset, asset])], statementFilters.asset)}</select></div>
+          <div><label class="fl" for="st-status">Status</label><select class="sel" id="st-status">${optionList([['all', 'All statuses'], ...statuses.map((status): [string, string] => [status, statusText(status)])], statementFilters.status)}</select></div>
+          <div class="statement-custom" id="st-custom"${statementFilters.period === 'custom' ? '' : ' hidden'}>
+            <div><label class="fl" for="st-from">From</label><input class="help-input" id="st-from" type="date" value="${escapeHtml(statementFilters.from)}"></div>
+            <div><label class="fl" for="st-to">To</label><input class="help-input" id="st-to" type="date" value="${escapeHtml(statementFilters.to)}"></div>
+          </div>
+        </div>
+        <div class="deposit-actions">
+          <button class="btn" type="button" data-tool-action="st-export">Download CSV</button>
+          <button class="btn alt" type="button" data-tool-action="st-reset">Reset filters</button>
+        </div>
+      </div><div id="statement-results"></div>`;
+    drawStatementResults();
+  };
+
   const renderStatements = () => {
-    const recordCount =
-      (Array.isArray(ST.tx) ? ST.tx.length : 0) +
-      (Array.isArray(ST.depositRequests) ? ST.depositRequests.length : 0);
     root.innerHTML = `<div class="head"><div><div class="lbl">Your recorded dashboard activity</div><div class="bal">Statements and tax</div></div></div>
-      <div class="member-tool-card"><h3>Account activity export</h3><p>Download the transactions and deposit requests currently saved in your member dashboard (${recordCount} records).</p><button class="btn" type="button" data-tool-action="export-activity">Download activity CSV</button></div>
-      <p class="note">This export is for your records only. It is not an official statement, tax document, or tax advice. Investment-plan projections are not included as completed transactions.</p>`;
+      <div class="statement-tabs" role="tablist" aria-label="Statements and tax">
+        <button class="statement-tab ${statementsTab === 'statements' ? 'on' : ''}" type="button" role="tab" aria-selected="${statementsTab === 'statements'}" data-tool-action="st-tab" data-tab="statements">Statements</button>
+        <button class="statement-tab ${statementsTab === 'tax' ? 'on' : ''}" type="button" role="tab" aria-selected="${statementsTab === 'tax'}" data-tool-action="st-tab" data-tab="tax">Tax</button>
+      </div>
+      <div id="statements-body"></div>`;
+    drawStatementsBody();
+  };
+
+  const handleStatementsChange = (event: Event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return;
+    const value = target.value;
+    switch (target.id) {
+      case 'st-period':
+        statementFilters.period = value;
+        root.querySelector<HTMLElement>('#st-custom')?.toggleAttribute('hidden', value !== 'custom');
+        break;
+      case 'st-type':
+        statementFilters.type = value;
+        break;
+      case 'st-asset':
+        statementFilters.asset = value;
+        break;
+      case 'st-status':
+        statementFilters.status = value;
+        break;
+      case 'st-from':
+        statementFilters.from = value;
+        break;
+      case 'st-to':
+        statementFilters.to = value;
+        break;
+      case 'st-year': {
+        const year = Number(value);
+        if (Number.isInteger(year)) taxYear = year;
+        drawTaxResults();
+        return;
+      }
+      default:
+        return;
+    }
+    statementLimit = STATEMENT_PAGE_SIZE;
+    drawStatementResults();
+  };
+
+  const handleStatementsAction = (action: string, button: HTMLElement) => {
+    if (action === 'st-tab') {
+      statementsTab = button.dataset.tab === 'tax' ? 'tax' : 'statements';
+      renderStatements();
+    } else if (action === 'st-more') {
+      statementLimit += STATEMENT_PAGE_SIZE;
+      drawStatementResults();
+    } else if (action === 'st-reset') {
+      Object.assign(statementFilters, statementDefaults);
+      statementLimit = STATEMENT_PAGE_SIZE;
+      drawStatementsBody();
+    } else if (action === 'st-export') {
+      downloadStatement(filteredStatementRecords(statementRecords()), 'statement');
+    } else if (action === 'st-export-year') {
+      downloadStatement(taxYearRecords(statementRecords()), `activity-summary-${taxYear}`);
+    }
   };
 
   // ---- Referral (frontend only) -----------------------------------------
@@ -1090,7 +1384,6 @@ export function installMemberDashboardTools() {
     .help-faq-item p{margin:0;padding:0 18px 14px;color:var(--mute);line-height:1.6;max-width:70ch}
     .help-faq-item p:last-child{padding-bottom:18px}
     .help-faq-action{padding:0 18px 18px}
-    .security-card{max-width:900px}
     .security-list{display:grid;gap:10px;list-style:none;padding:0;margin:14px 0 0}
     .security-item{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 16px;border:1px solid var(--line);border-radius:12px}
     .security-item-main{display:grid;gap:4px;min-width:0}
@@ -1101,10 +1394,10 @@ export function installMemberDashboardTools() {
     .security-item-side .btn{padding:9px 16px;font-size:14px;white-space:nowrap}
     .security-item-side .btn[disabled]{opacity:.5;cursor:not-allowed;transform:none;filter:none}
     .security-badge-muted{background:color-mix(in srgb,var(--mute) 15%,transparent);color:var(--mute)}
-    .security-notice{max-width:900px;margin:0 0 8px;padding:11px 14px;border-radius:10px;font-size:14px;font-weight:600;background:color-mix(in srgb,var(--brand) 12%,transparent);color:var(--brand)}
+    .security-notice{margin:0 0 8px;padding:11px 14px;border-radius:10px;font-size:14px;font-weight:600;background:color-mix(in srgb,var(--brand) 12%,transparent);color:var(--brand)}
     .security-notice[hidden]{display:none}
     .security-card .hint{margin-top:14px}
-    .security-status-bar{display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;max-width:900px;margin-top:12px;padding:16px 18px;border:1px solid var(--line);border-radius:14px;background:none;color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+    .security-status-bar{display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;margin-top:12px;padding:16px 18px;border:1px solid var(--line);border-radius:14px;background:none;color:var(--ink);font:inherit;text-align:left;cursor:pointer}
     .security-status-bar:hover{background:color-mix(in srgb,var(--ink) 4%,transparent)}
     .security-status-bar:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
     .security-status-text{display:grid;gap:4px;min-width:0}
@@ -1124,7 +1417,33 @@ export function installMemberDashboardTools() {
     .referral-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;max-width:900px}
     .referral-steps .member-tool-card{margin:0}
     .referral-steps .member-tool-card p{margin:0}
-    @media(max-width:760px){.referral-stats,.referral-steps{grid-template-columns:1fr}.referral-field{flex-wrap:wrap}.help-grid{grid-template-columns:1fr}.security-item{flex-direction:column;align-items:flex-start}.security-item-side{justify-content:flex-start}}
+    #tax-results .help-tickets{max-width:none}
+    .statement-tabs{display:flex;gap:26px;margin:20px 0 0;border-bottom:1px solid var(--line);overflow-x:auto}
+    .statement-tab{padding:0 0 10px;margin-bottom:-1px;border:0;border-bottom:2px solid transparent;background:none;color:var(--mute);font:inherit;font-size:16px;font-weight:700;white-space:nowrap;cursor:pointer}
+    .statement-tab.on{color:var(--ink);border-bottom-color:var(--brand)}
+    .statement-tab:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+    .statement-filters{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0 16px}
+    .statement-filters .fl{margin-top:14px}
+    .statement-custom{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 16px}
+    .statement-custom[hidden]{display:none}
+    .statement-year{max-width:240px}
+    .statement-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:16px}
+    .statement-tile{display:grid;gap:6px;padding:16px 18px;border:1px solid var(--line);border-radius:14px;min-width:0}
+    .statement-tile span{color:var(--mute);font-size:13px}
+    .statement-tile b{font-size:22px;letter-spacing:-.02em;overflow-wrap:anywhere}
+    .statement-tile small{color:var(--mute);font-size:12px}
+    .statement-table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:14px;margin-top:12px}
+    .statement-table{width:100%;min-width:760px;border-collapse:collapse;font-size:14px}
+    .statement-table th{padding:12px 16px;text-align:left;color:var(--mute);font-size:12px;font-weight:600;border-bottom:1px solid var(--line);white-space:nowrap}
+    .statement-table td{padding:14px 16px;border-top:1px solid var(--line);vertical-align:top}
+    .statement-table tbody tr:first-child td{border-top:0}
+    .statement-table td small{display:block;margin-top:3px;color:var(--mute);font-size:12px}
+    .statement-table .statement-num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+    .statement-ref{max-width:200px;color:var(--mute);font-size:12px;overflow-wrap:anywhere}
+    .statement-in{color:var(--up);font-weight:600}
+    .statement-out{color:var(--dn);font-weight:600}
+    .statement-muted{color:var(--mute)}
+    @media(max-width:760px){.statement-filters,.statement-custom{grid-template-columns:1fr}.statement-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.referral-stats,.referral-steps{grid-template-columns:1fr}.referral-field{flex-wrap:wrap}.help-grid{grid-template-columns:1fr}.security-item{flex-direction:column;align-items:flex-start}.security-item-side{justify-content:flex-start}}
     @media(max-width:760px){.member-tool-filters,.member-tool-alert-form{grid-template-columns:1fr}.member-tool-row{grid-template-columns:minmax(0,1fr) auto;gap:8px}.member-tool-heading{display:none}.member-tool-number{text-align:left}.member-tool-action{grid-column:1/-1;justify-self:start}.member-tool-calendar-facts{grid-template-columns:repeat(3,minmax(0,1fr))}}
   `;
   document.head.appendChild(style);
@@ -1134,8 +1453,9 @@ export function installMemberDashboardTools() {
     root.addEventListener('input', () => {
       if (page === 'Screener') drawScreenerRows();
     });
-    root.addEventListener('change', () => {
+    root.addEventListener('change', (event) => {
       if (page === 'Screener') drawScreenerRows();
+      else if (page === 'Statements and tax') handleStatementsChange(event);
     });
     root.addEventListener('click', (event) => {
       const target = event.target;
@@ -1198,8 +1518,8 @@ export function installMemberDashboardTools() {
       } else if (action === 'check-alerts') {
         button.setAttribute('disabled', 'true');
         void checkAlerts().finally(() => button.removeAttribute('disabled'));
-      } else if (action === 'export-activity') {
-        downloadActivity();
+      } else if (action?.startsWith('st-')) {
+        handleStatementsAction(action, button);
       } else if (action === 'submit-ticket') {
         void submitSupportTicket(button);
       } else if (action === 'security-action') {
