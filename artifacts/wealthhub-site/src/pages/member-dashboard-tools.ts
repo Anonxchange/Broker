@@ -1440,6 +1440,124 @@ export function installMemberDashboardTools() {
     }
   };
 
+  // ---- Signals (frontend only) -------------------------------------------
+  // Nothing is connected yet. Edit signalPlans for your real prices and
+  // features. Fill signalFeed and set the subscription from your database,
+  // then set SIGNALS_CONNECTED to true once checkout is wired up.
+  const SIGNALS_CONNECTED = false;
+  type SignalPlan = {
+    id: string;
+    name: string;
+    blurb: string;
+    price: number;
+    period: string;
+    features: string[];
+    badge?: string;
+  };
+  type SignalItem = {
+    id: string;
+    category: string;
+    symbol: string;
+    direction: 'buy' | 'sell';
+    entry: number;
+    takeProfit: number;
+    stopLoss: number;
+    postedAt: number;
+    status: 'active' | 'hit' | 'stopped' | 'closed';
+  };
+  const signalPlans: SignalPlan[] = [
+    {
+      id: 'starter',
+      name: 'Starter',
+      blurb: 'Core market signals for getting started.',
+      price: 49,
+      period: 'per month',
+      features: ['Crypto and forex signals', 'Entry, take-profit and stop-loss levels', 'Email delivery'],
+    },
+    {
+      id: 'pro',
+      name: 'Pro',
+      blurb: 'More markets and faster delivery.',
+      price: 99,
+      period: 'per month',
+      badge: 'Most popular',
+      features: ['Everything in Starter', 'Stocks, ETFs and commodities', 'Instant dashboard alerts', 'Signal history and results'],
+    },
+    {
+      id: 'vip',
+      name: 'VIP',
+      blurb: 'Full coverage with priority support.',
+      price: 199,
+      period: 'per month',
+      features: ['Everything in Pro', 'Priority support', 'Market notes from our analysts', 'Early access to new products'],
+    },
+  ];
+  const signalFeed: SignalItem[] = [];
+  const signalSubscription = null as { planId: string; renewsAt: number } | null;
+
+  const signalStatus: Record<SignalItem['status'], [string, string]> = {
+    active: ['Active', 'r2'],
+    hit: ['Target hit', 'r1'],
+    stopped: ['Stopped out', 'r3'],
+    closed: ['Closed', 'security-badge-muted'],
+  };
+
+  const renderSignals = () => {
+    const subscribed = signalSubscription !== null;
+    const current = signalPlans.find((plan) => plan.id === signalSubscription?.planId);
+    const planCards = signalPlans
+      .map((plan) => {
+        const owned = current?.id === plan.id;
+        return `<div class="pc"><div class="tag"><span>${escapeHtml(plan.name)}</span>${plan.badge ? `<span class="risk r2">${escapeHtml(plan.badge)}</span>` : ''}</div>
+          <div><h3>${escapeHtml(plan.name)} signals</h3><p>${escapeHtml(plan.blurb)}</p></div>
+          <div class="ret">${escapeHtml(fmt(plan.price))}<small>${escapeHtml(plan.period)}</small></div>
+          <ul class="signal-features">${plan.features.map((feature) => `<li>${escapeHtml(feature)}</li>`).join('')}</ul>
+          <button class="btn${owned ? ' alt' : ''}" type="button" data-tool-action="signal-subscribe" data-plan="${escapeHtml(plan.id)}"${owned ? ' disabled aria-disabled="true"' : ''}>${owned ? 'Current plan' : subscribed ? 'Switch plan' : 'Subscribe'}</button></div>`;
+      })
+      .join('');
+
+    const feedRows = signalFeed.length
+      ? signalFeed
+          .map((item) => {
+            const [label, tone] = signalStatus[item.status] || signalStatus.active;
+            const level = (name: string, value: number) =>
+              `<span><small>${name}</small><b>${escapeHtml(priceText(item.category, value))}</b></span>`;
+            return `<div class="help-ticket-row"><div class="help-ticket-main"><b>${escapeHtml(item.symbol)} · ${item.direction === 'buy' ? 'Buy' : 'Sell'}</b><small>${escapeHtml(item.category)} · ${escapeHtml(new Date(item.postedAt).toLocaleString())}</small><div class="signal-levels">${level('Entry', item.entry)}${level('Take profit', item.takeProfit)}${level('Stop loss', item.stopLoss)}</div></div><span class="risk ${tone}">${label}</span></div>`;
+          })
+          .join('')
+      : '<div class="help-empty"><b>No signals published yet</b><p>New signals will appear here as soon as they are posted.</p></div>';
+
+    root.innerHTML = `<div class="head"><div><div class="lbl">Market signals</div><div class="bal">Signals</div></div><span class="risk ${subscribed ? 'r1' : 'security-badge-muted'}">${subscribed && current ? escapeHtml(current.name) + ' plan' : 'No active plan'}</span></div>
+      <p class="note">Subscribe to receive trade ideas with entry, take-profit and stop-loss levels. Signals are general information, not personal advice.</p>
+      <div class="security-notice" id="signal-notice" role="status" hidden></div>
+
+      <h2 class="sec">Choose a plan</h2>
+      <div class="plans signal-plan-grid">${planCards}</div>
+
+      <h2 class="sec">Latest signals</h2>
+      <div class="mp help-tickets">${subscribed ? feedRows : '<div class="help-empty"><b>Subscribe to see live signals</b><p>Pick a plan above to unlock the signal feed.</p></div>'}</div>
+
+      <h2 class="sec">How it works</h2>
+      <div class="referral-steps">
+        <div class="member-tool-card"><h3>1. Pick a plan</h3><p>Choose the coverage and delivery speed that suits you.</p></div>
+        <div class="member-tool-card"><h3>2. Receive signals</h3><p>Each signal lists the asset, direction, entry, take-profit and stop-loss.</p></div>
+        <div class="member-tool-card"><h3>3. Decide for yourself</h3><p>Review each idea and manage your own risk before you trade.</p></div>
+      </div>
+      <div class="member-tool-card"><h3>Risk warning</h3><p>Trading involves risk, including the loss of your capital. Signals do not guarantee profit, and past results do not predict future performance. Only trade with money you can afford to lose. Subscriptions are not investment advice.</p></div>`;
+  };
+
+  const handleSignalAction = (button: HTMLElement) => {
+    const notice = root.querySelector<HTMLElement>('#signal-notice');
+    if (!SIGNALS_CONNECTED) {
+      if (notice) {
+        notice.textContent = 'Subscriptions are not available yet. Nothing was charged.';
+        notice.hidden = false;
+      }
+      return;
+    }
+    void button;
+  };
+
   const renderNews = () => {
     const requestId = ++publicContentRequest;
     const header = `<div class="head"><div><div class="lbl">Live market coverage</div><div class="bal">News</div></div></div>`;
@@ -1561,6 +1679,13 @@ export function installMemberDashboardTools() {
     .member-tool-calendar-facts b{font-variant-numeric:tabular-nums}
     .member-tool-calendar-source{margin:8px 0 0!important}
     .member-tool-alert-form{grid-template-columns:1.4fr 1fr 1fr auto;align-items:end}
+    .signal-features{margin:0;padding:0;list-style:none;display:grid;gap:8px;font-size:14px}
+    .signal-features li{position:relative;padding-left:22px;color:var(--mute)}
+    .signal-features li::before{content:"✓";position:absolute;left:0;color:var(--up);font-weight:700}
+    .signal-levels{display:flex;flex-wrap:wrap;gap:18px;margin-top:8px}
+    .signal-levels span{display:grid;gap:2px}
+    .signal-levels small{font-size:11px}
+    .signal-levels b{font-variant-numeric:tabular-nums}
     .profile-card{max-width:900px}
     .profile-avatar-row{display:flex;align-items:center;gap:20px;flex-wrap:wrap}
     .profile-avatar{display:grid;place-items:center;width:96px;height:96px;flex:none;border-radius:50%;overflow:hidden;background:var(--ink);color:var(--bg);font-size:36px;font-weight:800}
@@ -1743,6 +1868,8 @@ export function installMemberDashboardTools() {
         openVerification();
       } else if (action === 'security-back') {
         openSecurityView('overview');
+      } else if (action === 'signal-subscribe') {
+        handleSignalAction(button);
       } else if (action?.startsWith('profile-')) {
         handleProfileAction(action);
       } else if (action === 'copy-referral') {
@@ -1759,6 +1886,7 @@ export function installMemberDashboardTools() {
   R['Statements and tax'] = renderStatements;
   R.Referral = renderReferral;
   R.Profile = renderProfile;
+  R.Signals = renderSignals;
   R['Help center'] = renderHelp;
   R['Security and verification'] = () => {
     securityView = 'overview';
