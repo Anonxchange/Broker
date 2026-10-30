@@ -1663,22 +1663,32 @@ export function installMemberDashboardTools() {
   const TRADING_CONNECTED = false;
   const FX_PAYOUT_PERCENT: number | null = null;
   const FX_PAIRS = [
-    { symbol: 'EUR/USD', ticker: 'FX_IDC:EURUSD' },
-    { symbol: 'GBP/USD', ticker: 'FX_IDC:GBPUSD' },
-    { symbol: 'USD/JPY', ticker: 'FX_IDC:USDJPY' },
-    { symbol: 'AUD/USD', ticker: 'FX_IDC:AUDUSD' },
-    { symbol: 'USD/CAD', ticker: 'FX_IDC:USDCAD' },
-    { symbol: 'USD/CHF', ticker: 'FX_IDC:USDCHF' },
-    { symbol: 'USD/CNY', ticker: 'FX_IDC:USDCNY' },
-    { symbol: 'USD/NGN', ticker: 'FX_IDC:USDNGN' },
+    { symbol: 'EUR/USD', name: 'Euro / US dollar', ticker: 'FX_IDC:EURUSD' },
+    { symbol: 'GBP/USD', name: 'British pound / US dollar', ticker: 'FX_IDC:GBPUSD' },
+    { symbol: 'USD/JPY', name: 'US dollar / Japanese yen', ticker: 'FX_IDC:USDJPY' },
+    { symbol: 'AUD/USD', name: 'Australian dollar / US dollar', ticker: 'FX_IDC:AUDUSD' },
+    { symbol: 'USD/CAD', name: 'US dollar / Canadian dollar', ticker: 'FX_IDC:USDCAD' },
+    { symbol: 'USD/CHF', name: 'US dollar / Swiss franc', ticker: 'FX_IDC:USDCHF' },
+    { symbol: 'NZD/USD', name: 'New Zealand dollar / US dollar', ticker: 'FX_IDC:NZDUSD' },
+    { symbol: 'EUR/GBP', name: 'Euro / British pound', ticker: 'FX_IDC:EURGBP' },
+    { symbol: 'EUR/JPY', name: 'Euro / Japanese yen', ticker: 'FX_IDC:EURJPY' },
+    { symbol: 'GBP/JPY', name: 'British pound / Japanese yen', ticker: 'FX_IDC:GBPJPY' },
+    { symbol: 'USD/CNY', name: 'US dollar / Chinese yuan', ticker: 'FX_IDC:USDCNY' },
+    { symbol: 'USD/ZAR', name: 'US dollar / South African rand', ticker: 'FX_IDC:USDZAR' },
+    { symbol: 'USD/NGN', name: 'US dollar / Nigerian naira', ticker: 'FX_IDC:USDNGN' },
   ];
   const FX_TIMERS = [5, 15, 30, 60, 180, 300];
   const FX_AMOUNTS = [1, 5, 10, 25, 50, 100];
 
-  type FxTick = { t: number; p: number };
+  type FxTick = { t: number; p: number; live?: boolean };
+  type FxCandle = { t: number; o: number; h: number; l: number; c: number };
   const fx = {
     symbol: 'EUR/USD',
+    style: 'line' as 'line' | 'candles',
     ticks: [] as FxTick[],
+    candles: [] as FxCandle[],
+    interval: 60,
+    quotes: {} as Record<string, { p: number; change: number | null }>,
     timerIndex: 2,
     amount: 1,
     run: 0,
@@ -1696,6 +1706,8 @@ export function installMemberDashboardTools() {
   const fxClock = (date: Date) => date.toLocaleTimeString([], { hour12: false });
   const fxDecimals = (price: number) => (price > 500 ? 2 : price > 50 ? 3 : 5);
   const fxPrice = (price: number) => price.toFixed(fxDecimals(price));
+  const fxChange = (change: number | null) =>
+    change === null ? '—' : `${change >= 0 ? '+' : '−'}${Math.abs(change).toFixed(2)}%`;
   const fxOffset = () => {
     const minutes = -new Date().getTimezoneOffset();
     const sign = minutes >= 0 ? '+' : '−';
@@ -1748,6 +1760,39 @@ export function installMemberDashboardTools() {
     profit.textContent = `+$${gain.toFixed(2)}`;
   };
 
+  const updateForexList = () => {
+    FX_PAIRS.forEach((pair, index) => {
+      const quote = fx.quotes[pair.symbol];
+      const price = root.querySelector<HTMLElement>(`#fx-p-${index}`);
+      const change = root.querySelector<HTMLElement>(`#fx-c-${index}`);
+      if (price) price.textContent = quote ? fxPrice(quote.p) : '—';
+      if (change) {
+        change.textContent = fxChange(quote ? quote.change : null);
+        change.className = `fx-row-num ${quote && quote.change !== null ? (quote.change >= 0 ? 'up' : 'dn') : ''}`;
+      }
+    });
+  };
+
+  const fxBuildCandles = () => {
+    const ms = fx.interval * 1000;
+    const bucket = (t: number) => Math.floor(t / ms) * ms;
+    const map = new Map<number, FxCandle>();
+    fx.candles.forEach((candle) => map.set(bucket(candle.t), { ...candle, t: bucket(candle.t) }));
+    fx.ticks.forEach((tick) => {
+      if (!tick.live) return;
+      const key = bucket(tick.t);
+      const current = map.get(key);
+      if (current) {
+        current.h = Math.max(current.h, tick.p);
+        current.l = Math.min(current.l, tick.p);
+        current.c = tick.p;
+      } else {
+        map.set(key, { t: key, o: tick.p, h: tick.p, l: tick.p, c: tick.p });
+      }
+    });
+    return [...map.values()].sort((a, b) => a.t - b.t);
+  };
+
   const drawForex = (canvas: HTMLCanvasElement) => {
     const wrap = canvas.parentElement;
     if (!wrap) return;
@@ -1767,6 +1812,7 @@ export function installMemberDashboardTools() {
     ctx.clearRect(0, 0, w, h);
     const c = fxColors();
     const font = 'Ppmori, Arial, sans-serif';
+    const candleMode = fx.style === 'candles';
 
     const now = Date.now();
     const second = Math.floor(now / 1000);
@@ -1795,8 +1841,8 @@ export function installMemberDashboardTools() {
       if (fill) fill.style.width = `${share === null ? 50 : share}%`;
     }
 
-    const future = Math.max(20, timer * 1.2);
-    const past = Math.max(90, future * 2.4);
+    const future = candleMode ? fx.interval * 3 : Math.max(20, timer * 1.2);
+    const past = candleMode ? fx.interval * 45 : Math.max(90, future * 2.4);
     const tMin = now - past * 1000;
     const span = (past + future) * 1000;
     const x = (t: number) => ((t - tMin) / span) * w;
@@ -1804,18 +1850,27 @@ export function installMemberDashboardTools() {
     const yBottom = h - 30;
 
     const visible = fx.ticks.filter((tick) => tick.t >= tMin - 120_000);
-    if (!visible.length) {
+    const candles = candleMode ? fxBuildCandles().filter((candle) => candle.t + fx.interval * 1000 >= tMin) : [];
+    if (!visible.length && !candles.length) {
       ctx.fillStyle = c.mute;
       ctx.font = `14px ${font}`;
+      ctx.textAlign = 'left';
       ctx.fillText('Waiting for live quotes…', 16, h / 2);
       return;
     }
-    const last = visible[visible.length - 1].p;
+    const last = visible.length ? visible[visible.length - 1].p : candles[candles.length - 1].c;
     const pts = [...visible, { t: now, p: last }];
-    const inWindow = pts.filter((pt) => pt.t >= tMin);
-    const basis = inWindow.length ? inWindow : pts.slice(-2);
-    let lo = Math.min(...basis.map((pt) => pt.p));
-    let hi = Math.max(...basis.map((pt) => pt.p));
+    let lo: number;
+    let hi: number;
+    if (candleMode && candles.length) {
+      lo = Math.min(...candles.map((candle) => candle.l));
+      hi = Math.max(...candles.map((candle) => candle.h));
+    } else {
+      const inWindow = pts.filter((pt) => pt.t >= tMin);
+      const basis = inWindow.length ? inWindow : pts.slice(-2);
+      lo = Math.min(...basis.map((pt) => pt.p));
+      hi = Math.max(...basis.map((pt) => pt.p));
+    }
     const pad = Math.max((hi - lo) * 0.2, last * 0.00003);
     lo -= pad;
     hi += pad;
@@ -1838,8 +1893,8 @@ export function installMemberDashboardTools() {
       ctx.globalAlpha = 1;
       ctx.fillText(fxPrice(price), w - 10, gy - 6);
     }
-    const steps = [5, 10, 15, 30, 60, 120, 300];
-    const step = steps.find((value) => (past + future) / value <= 8) || 300;
+    const steps = [5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200];
+    const step = steps.find((value) => (past + future) / value <= 8) || 7200;
     ctx.textAlign = 'center';
     for (let t = Math.ceil(tMin / (step * 1000)) * step * 1000; t < tMin + span; t += step * 1000) {
       const gx = Math.round(x(t)) + 0.5;
@@ -1854,61 +1909,77 @@ export function installMemberDashboardTools() {
       ctx.fillText(label, Math.min(Math.max(gx, 34), w - 34), h - 9);
     }
 
-    // area + line
-    const expiryX = x(now + timer * 1000);
     const nowX = x(now);
-    ctx.globalAlpha = 0.07;
-    ctx.fillStyle = c.brand;
-    ctx.fillRect(nowX, yTop - 20, Math.max(0, expiryX - nowX), yBottom - yTop + 20);
-    ctx.globalAlpha = 1;
-
-    const gradient = ctx.createLinearGradient(0, yTop, 0, yBottom);
-    gradient.addColorStop(0, c.brand);
-    gradient.addColorStop(1, c.brand);
-    ctx.beginPath();
-    pts.forEach((pt, index) => {
-      if (index === 0) ctx.moveTo(x(pt.t), y(pt.p));
-      else ctx.lineTo(x(pt.t), y(pt.p));
-    });
-    ctx.lineTo(nowX, yBottom);
-    ctx.lineTo(x(pts[0].t), yBottom);
-    ctx.closePath();
-    ctx.globalAlpha = 0.18;
-    ctx.fillStyle = gradient;
-    ctx.fill();
-    ctx.globalAlpha = 1;
-
-    ctx.beginPath();
-    pts.forEach((pt, index) => {
-      if (index === 0) ctx.moveTo(x(pt.t), y(pt.p));
-      else ctx.lineTo(x(pt.t), y(pt.p));
-    });
-    ctx.strokeStyle = c.brand;
-    ctx.lineWidth = 2.2;
-    ctx.lineJoin = 'round';
-    ctx.stroke();
-
-    // expiration line + flag
-    ctx.strokeStyle = c.brand;
-    ctx.globalAlpha = 0.7;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(expiryX, 8);
-    ctx.lineTo(expiryX, yBottom);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = c.ink;
-    ctx.beginPath();
-    ctx.moveTo(expiryX, 8);
-    ctx.lineTo(expiryX + 22, 8);
-    ctx.lineTo(expiryX + 14, 17);
-    ctx.lineTo(expiryX + 22, 26);
-    ctx.lineTo(expiryX, 26);
-    ctx.closePath();
-    ctx.fill();
-
-    // current price line, tag and pulsing dot
     const py = y(last);
+
+    if (candleMode) {
+      const bodyWidth = Math.max(2, Math.min(18, (x(tMin + fx.interval * 1000) - x(tMin)) * 0.7));
+      candles.forEach((candle) => {
+        const cx = x(candle.t + (fx.interval * 1000) / 2);
+        const rising = candle.c >= candle.o;
+        const color = rising ? c.up : c.dn;
+        ctx.strokeStyle = color;
+        ctx.fillStyle = color;
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(cx, y(candle.h));
+        ctx.lineTo(cx, y(candle.l));
+        ctx.stroke();
+        const top = y(Math.max(candle.o, candle.c));
+        const bodyHeight = Math.max(1.5, Math.abs(y(candle.o) - y(candle.c)));
+        ctx.fillRect(cx - bodyWidth / 2, top, bodyWidth, bodyHeight);
+      });
+    } else {
+      // expiration zone, area and line
+      const expiryX = x(now + timer * 1000);
+      ctx.globalAlpha = 0.07;
+      ctx.fillStyle = c.brand;
+      ctx.fillRect(nowX, yTop - 20, Math.max(0, expiryX - nowX), yBottom - yTop + 20);
+      ctx.globalAlpha = 1;
+
+      ctx.beginPath();
+      pts.forEach((pt, index) => {
+        if (index === 0) ctx.moveTo(x(pt.t), y(pt.p));
+        else ctx.lineTo(x(pt.t), y(pt.p));
+      });
+      ctx.lineTo(nowX, yBottom);
+      ctx.lineTo(x(pts[0].t), yBottom);
+      ctx.closePath();
+      ctx.globalAlpha = 0.18;
+      ctx.fillStyle = c.brand;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+
+      ctx.beginPath();
+      pts.forEach((pt, index) => {
+        if (index === 0) ctx.moveTo(x(pt.t), y(pt.p));
+        else ctx.lineTo(x(pt.t), y(pt.p));
+      });
+      ctx.strokeStyle = c.brand;
+      ctx.lineWidth = 2.2;
+      ctx.lineJoin = 'round';
+      ctx.stroke();
+
+      ctx.strokeStyle = c.brand;
+      ctx.globalAlpha = 0.7;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(expiryX, 8);
+      ctx.lineTo(expiryX, yBottom);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = c.ink;
+      ctx.beginPath();
+      ctx.moveTo(expiryX, 8);
+      ctx.lineTo(expiryX + 22, 8);
+      ctx.lineTo(expiryX + 14, 17);
+      ctx.lineTo(expiryX + 22, 26);
+      ctx.lineTo(expiryX, 26);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // current price line and tag
     ctx.setLineDash([5, 5]);
     ctx.strokeStyle = c.brand;
     ctx.globalAlpha = 0.65;
@@ -1932,19 +2003,21 @@ export function installMemberDashboardTools() {
     ctx.textAlign = 'center';
     ctx.fillText(label, w - tagWidth / 2 - 6, tagY + 20);
 
-    const pulse = 9 + 3 * Math.sin(now / 280);
-    ctx.globalAlpha = 0.28;
-    ctx.fillStyle = c.brand;
-    ctx.beginPath();
-    ctx.arc(nowX, py, pulse, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalAlpha = 1;
-    ctx.beginPath();
-    ctx.arc(nowX, py, 5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = c.bg;
-    ctx.stroke();
+    if (!candleMode) {
+      const pulse = 9 + 3 * Math.sin(now / 280);
+      ctx.globalAlpha = 0.28;
+      ctx.fillStyle = c.brand;
+      ctx.beginPath();
+      ctx.arc(nowX, py, pulse, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.beginPath();
+      ctx.arc(nowX, py, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = c.bg;
+      ctx.stroke();
+    }
   };
 
   const loadForexHistory = async (run: number) => {
@@ -1965,19 +2038,37 @@ export function installMemberDashboardTools() {
         days: 1,
       });
       if (run !== fx.run || symbol !== fx.symbol) return;
-      const candles = Array.isArray(result?.candles) ? result.candles : [];
-      const rows: FxTick[] = candles.flatMap((candle: unknown) => {
+      const raw = Array.isArray(result?.candles) ? result.candles : [];
+      const rows: FxCandle[] = raw.flatMap((candle: unknown) => {
         if (!candle || typeof candle !== 'object') return [];
         const value = candle as Record<string, unknown>;
         const time = Number(value.time);
         const close = Number(value.close);
-        return Number.isFinite(time) && Number.isFinite(close) && close > 0
-          ? [{ t: time * 1000, p: close }]
-          : [];
+        if (!Number.isFinite(time) || !Number.isFinite(close) || close <= 0) return [];
+        const open = Number(value.open);
+        const high = Number(value.high);
+        const low = Number(value.low);
+        return [
+          {
+            t: time * 1000,
+            o: Number.isFinite(open) && open > 0 ? open : close,
+            h: Number.isFinite(high) && high > 0 ? high : close,
+            l: Number.isFinite(low) && low > 0 ? low : close,
+            c: close,
+          },
+        ];
       });
       rows.sort((a, b) => a.t - b.t);
+      if (rows.length >= 2) {
+        const gaps = rows.slice(1).map((row, index) => (row.t - rows[index].t) / 1000);
+        gaps.sort((a, b) => a - b);
+        const median = gaps[Math.floor(gaps.length / 2)];
+        if (Number.isFinite(median) && median > 0) fx.interval = Math.min(3600, Math.max(60, median));
+      }
+      fx.candles = rows;
       const newest = rows.length ? rows[rows.length - 1].t : 0;
-      fx.ticks = [...rows.slice(-300), ...fx.ticks.filter((tick) => tick.t > newest)];
+      const history: FxTick[] = rows.slice(-300).map((row) => ({ t: row.t, p: row.c }));
+      fx.ticks = [...history, ...fx.ticks.filter((tick) => tick.t > newest)];
     } catch {
       // History is optional; live quotes alone still draw the chart.
     }
@@ -1985,26 +2076,35 @@ export function installMemberDashboardTools() {
 
   const pollForex = async (run: number) => {
     if (run !== fx.run) return;
-    const pair = FX_PAIRS.find((item) => item.symbol === fx.symbol) || FX_PAIRS[0];
     try {
       const response = await fetch('https://scanner.tradingview.com/forex/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=UTF-8', Accept: 'application/json' },
         body: JSON.stringify({
-          symbols: { tickers: [pair.ticker], query: { types: [] } },
-          columns: ['close'],
+          symbols: { tickers: FX_PAIRS.map((pair) => pair.ticker), query: { types: [] } },
+          columns: ['close', 'change'],
         }),
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const payload = (await response.json()) as { data?: { d?: unknown[] }[] };
-      const price = payload.data?.[0]?.d?.[0];
+      const payload = (await response.json()) as { data?: { s?: string; d?: unknown[] }[] };
       if (run !== fx.run) return;
-      if (typeof price !== 'number' || !Number.isFinite(price) || price <= 0) {
-        throw new Error('No quote returned');
-      }
-      fx.ticks.push({ t: Date.now(), p: price });
+      const rows = Array.isArray(payload.data) ? payload.data : [];
+      rows.forEach((row) => {
+        const pair = FX_PAIRS.find((item) => item.ticker === row.s);
+        const price = row.d?.[0];
+        const change = row.d?.[1];
+        if (!pair || typeof price !== 'number' || !Number.isFinite(price) || price <= 0) return;
+        fx.quotes[pair.symbol] = {
+          p: price,
+          change: typeof change === 'number' && Number.isFinite(change) ? change : null,
+        };
+      });
+      const current = fx.quotes[fx.symbol];
+      if (!current) throw new Error('No quote returned');
+      fx.ticks.push({ t: Date.now(), p: current.p, live: true });
       if (fx.ticks.length > 900) fx.ticks.splice(0, fx.ticks.length - 900);
       fx.status = `TradingView quote · updated ${fxClock(new Date())}`;
+      updateForexList();
     } catch {
       if (run !== fx.run) return;
       fx.status = 'Live quotes are temporarily unavailable. Retrying…';
@@ -2032,46 +2132,73 @@ export function installMemberDashboardTools() {
     void pollForex(run);
   };
 
+  const fxFlags = (symbol: string, small = false) => {
+    const [base, quote] = symbol.split('/');
+    return `<span class="fx-flags${small ? ' sm' : ''}" aria-hidden="true"><i>${escapeHtml(base)}</i><i>${escapeHtml(quote)}</i></span>`;
+  };
+
   const renderForex = () => {
-    const [base, quote] = fx.symbol.split('/');
     const pairOptions = FX_PAIRS.map(
       (pair) =>
         `<option value="${escapeHtml(pair.symbol)}"${pair.symbol === fx.symbol ? ' selected' : ''}>${escapeHtml(pair.symbol)}</option>`,
     ).join('');
     const arrow = (path: string) =>
       `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${path}"/></svg>`;
+    const rows = FX_PAIRS.map(
+      (pair, index) =>
+        `<button class="fx-row${pair.symbol === fx.symbol ? ' on' : ''}" type="button" data-tool-action="fx-pair" data-symbol="${escapeHtml(pair.symbol)}"><span class="fx-row-name">${fxFlags(pair.symbol, true)}<span><b>${escapeHtml(pair.symbol)}</b><small>${escapeHtml(pair.name)}</small></span></span><span class="fx-row-num" id="fx-p-${index}">—</span><span class="fx-row-num" id="fx-c-${index}">—</span></button>`,
+    ).join('');
     root.innerHTML = `<div class="fx">
-      <div class="fx-bar">
-        <label class="fx-pair"><span class="fx-flags" aria-hidden="true"><i>${escapeHtml(base)}</i><i>${escapeHtml(quote)}</i></span><span class="visually-hidden fx-sr">Currency pair</span><select id="fx-pair" aria-label="Currency pair">${pairOptions}</select></label>
-        <div class="fx-exp"><small>Expiration time</small><b id="fx-exp">--:--:--</b></div>
-      </div>
-      <div class="fx-chartwrap"><canvas id="fx-canvas" aria-label="Live ${escapeHtml(fx.symbol)} price chart"></canvas><div class="fx-stamp" id="fx-stamp"></div></div>
-      <div class="fx-sent" aria-label="Recent price direction">
-        <span class="up" id="fx-up">—</span>
-        <div class="fx-sentbar"><u id="fx-sentfill"></u></div>
-        <span class="dn" id="fx-dn">—</span>
-      </div>
-      <p class="fx-sent-note">Share of rising vs falling quotes over the last minute.</p>
-      <div class="fx-panel">
-        <div class="fx-fields">
-          <div><span class="fx-label">Time</span><div class="fx-field"><div class="fx-input" id="fx-time">${fxTime(FX_TIMERS[fx.timerIndex])}</div><button class="fx-iconbtn" type="button" data-tool-action="fx-time" aria-label="Change expiration time"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></button></div></div>
-          <div><label class="fx-label" for="fx-amount">Amount</label><div class="fx-field"><input class="fx-input" id="fx-amount" type="number" inputmode="decimal" min="0" step="any" value="${fx.amount}"><button class="fx-iconbtn" type="button" data-tool-action="fx-amount" aria-label="Change amount"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M14.5 9.2c-.4-.8-1.3-1.2-2.5-1.2-1.4 0-2.4.7-2.4 1.8 0 2.7 5 1.2 5 3.9 0 1.1-1.1 1.8-2.6 1.8-1.2 0-2.2-.5-2.6-1.4M12 6.5V8m0 8v1.5"/></svg></button></div></div>
+      <div class="fx-main">
+        <div class="fx-left">
+          <div class="fx-bar">
+            <label class="fx-pair">${fxFlags(fx.symbol)}<select id="fx-pair" aria-label="Currency pair">${pairOptions}</select></label>
+            <div class="fx-exp"><small>Expiration time</small><b id="fx-exp">--:--:--</b></div>
+          </div>
+          <div class="fx-chartwrap">
+            <canvas id="fx-canvas" aria-label="Live ${escapeHtml(fx.symbol)} price chart"></canvas>
+            <div class="fx-stamp" id="fx-stamp"></div>
+            <div class="fx-styles" role="group" aria-label="Chart style">
+              <button type="button" class="${fx.style === 'line' ? 'on' : ''}" data-tool-action="fx-style" data-style="line" aria-pressed="${fx.style === 'line'}">Line</button>
+              <button type="button" class="${fx.style === 'candles' ? 'on' : ''}" data-tool-action="fx-style" data-style="candles" aria-pressed="${fx.style === 'candles'}">Candles</button>
+            </div>
+          </div>
+          <div class="fx-sent" aria-label="Recent price direction">
+            <span class="up" id="fx-up">—</span>
+            <div class="fx-sentbar"><u id="fx-sentfill"></u></div>
+            <span class="dn" id="fx-dn">—</span>
+          </div>
+          <p class="fx-sent-note">Share of rising vs falling quotes over the last minute.</p>
         </div>
-        <div class="fx-payout"><div><span>Payout</span><b id="fx-payout">$—</b></div><strong id="fx-percent">—</strong><div class="fx-profit"><span>Profit</span><b id="fx-profit">+$—</b></div></div>
-        <div class="security-notice" id="fx-notice" role="status" hidden></div>
-        <div class="fx-trade">
-          <button class="fx-buy" type="button" data-tool-action="fx-buy"><i>${arrow('M7 17 17 7M8 7h9v9')}</i>Buy</button>
-          <button class="fx-sell" type="button" data-tool-action="fx-sell"><i>${arrow('M7 7l10 10M17 8v9H8')}</i>Sell</button>
+        <div class="fx-right">
+          <div class="fx-panel">
+            <div class="fx-fields">
+              <div><span class="fx-label">Time</span><div class="fx-field"><div class="fx-input" id="fx-time">${fxTime(FX_TIMERS[fx.timerIndex])}</div><button class="fx-iconbtn" type="button" data-tool-action="fx-time" aria-label="Change expiration time"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></button></div></div>
+              <div><label class="fx-label" for="fx-amount">Amount</label><div class="fx-field"><input class="fx-input" id="fx-amount" type="number" inputmode="decimal" min="0" step="any" value="${fx.amount}"><button class="fx-iconbtn" type="button" data-tool-action="fx-amount" aria-label="Change amount"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M14.5 9.2c-.4-.8-1.3-1.2-2.5-1.2-1.4 0-2.4.7-2.4 1.8 0 2.7 5 1.2 5 3.9 0 1.1-1.1 1.8-2.6 1.8-1.2 0-2.2-.5-2.6-1.4M12 6.5V8m0 8v1.5"/></svg></button></div></div>
+            </div>
+            <div class="fx-payout"><div><span>Payout</span><b id="fx-payout">$—</b></div><strong id="fx-percent">—</strong><div class="fx-profit"><span>Profit</span><b id="fx-profit">+$—</b></div></div>
+            <div class="security-notice" id="fx-notice" role="status" hidden></div>
+            <div class="fx-trade">
+              <button class="fx-buy" type="button" data-tool-action="fx-buy"><i>${arrow('M7 17 17 7M8 7h9v9')}</i>Buy</button>
+              <button class="fx-sell" type="button" data-tool-action="fx-sell"><i>${arrow('M7 7l10 10M17 8v9H8')}</i>Sell</button>
+            </div>
+          </div>
+          <p class="hint" id="fx-status" role="status">${escapeHtml(fx.status)}</p>
         </div>
       </div>
-      <p class="hint" id="fx-status" role="status">${escapeHtml(fx.status)}</p>
+      <h2 class="sec">Forex pairs</h2>
+      <div class="fx-list">
+        <div class="fx-list-head"><span>Pair</span><span>Price</span><span>Change</span></div>
+        ${rows}
+      </div>
       <p class="note">Prices are live market quotes from TradingView and may be delayed or briefly unavailable. Trading carries risk, including loss of your capital.</p>
     </div>`;
     updateForexPayout();
+    updateForexList();
     startForex();
   };
 
-  const handleForexAction = (action: string) => {
+  const handleForexAction = (action: string, button: HTMLElement) => {
     if (action === 'fx-time') {
       fx.timerIndex = (fx.timerIndex + 1) % FX_TIMERS.length;
       const field = root.querySelector<HTMLElement>('#fx-time');
@@ -2083,6 +2210,23 @@ export function installMemberDashboardTools() {
       const input = root.querySelector<HTMLInputElement>('#fx-amount');
       if (input) input.value = String(fx.amount);
       updateForexPayout();
+    } else if (action === 'fx-style') {
+      fx.style = button.dataset.style === 'candles' ? 'candles' : 'line';
+      root.querySelectorAll<HTMLElement>('.fx-styles button').forEach((item) => {
+        const on = item.dataset.style === fx.style;
+        item.classList.toggle('on', on);
+        item.setAttribute('aria-pressed', String(on));
+      });
+    } else if (action === 'fx-pair') {
+      const symbol = button.dataset.symbol || '';
+      if (!FX_PAIRS.some((pair) => pair.symbol === symbol) || symbol === fx.symbol) return;
+      fx.symbol = symbol;
+      fx.ticks = [];
+      fx.candles = [];
+      fx.interval = 60;
+      fx.status = 'Connecting to live quotes…';
+      renderForex();
+      window.scrollTo(0, 0);
     } else if (action === 'fx-buy' || action === 'fx-sell') {
       const notice = root.querySelector<HTMLElement>('#fx-notice');
       if (!TRADING_CONNECTED) {
@@ -2106,9 +2250,11 @@ export function installMemberDashboardTools() {
   const handleForexChange = (event: Event) => {
     const target = event.target;
     if (target instanceof HTMLSelectElement && target.id === 'fx-pair') {
-      if (!FX_PAIRS.some((pair) => pair.symbol === target.value)) return;
+      if (!FX_PAIRS.some((pair) => pair.symbol === target.value) || target.value === fx.symbol) return;
       fx.symbol = target.value;
       fx.ticks = [];
+      fx.candles = [];
+      fx.interval = 60;
       fx.status = 'Connecting to live quotes…';
       renderForex();
     }
@@ -2145,22 +2291,26 @@ export function installMemberDashboardTools() {
   const forexStyle = document.createElement('style');
   forexStyle.textContent = `
     .fx{max-width:760px;margin:0 auto}
+    .fx-main{display:block}
     .fx-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
     .fx-pair{position:relative;display:inline-flex;align-items:center;gap:10px;padding:8px 36px 8px 10px;border:1px solid var(--line);border-radius:14px;background:color-mix(in srgb,var(--ink) 5%,transparent);cursor:pointer}
     .fx-pair:focus-within{box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 25%,transparent)}
     .fx-pair::after{content:"▾";position:absolute;right:13px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--ink)}
-    .fx-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
     .fx-flags{display:flex;flex:none}
     .fx-flags i{display:grid;place-items:center;width:32px;height:32px;border-radius:50%;border:2px solid var(--bg);background:var(--brand);color:#fff;font-style:normal;font-size:10px;font-weight:800}
     .fx-flags i+i{margin-left:-11px;background:var(--ink);color:var(--bg)}
+    .fx-flags.sm i{width:28px;height:28px;font-size:9px}
     .fx-pair select{appearance:none;-webkit-appearance:none;border:0;outline:none;background:transparent;color:var(--ink);font:inherit;font-size:18px;font-weight:700;cursor:pointer}
     .fx-pair select option{background:var(--bg);color:var(--ink)}
     .fx-exp{text-align:right;color:var(--mute);font-size:13px;line-height:1.35}
     .fx-exp small{display:block;font-size:13px}
     .fx-exp b{display:block;font-size:17px;font-weight:600;font-variant-numeric:tabular-nums}
-    .fx-chartwrap{position:relative;height:min(52vh,440px);min-height:300px;border:1px solid var(--line);border-radius:16px;overflow:hidden;background:color-mix(in srgb,var(--brand) 5%,var(--bg));touch-action:pan-y}
+    .fx-chartwrap{position:relative;height:clamp(320px,52vh,520px);border:1px solid var(--line);border-radius:16px;overflow:hidden;background:color-mix(in srgb,var(--brand) 5%,var(--bg));touch-action:pan-y}
     .fx-chartwrap canvas{position:absolute;left:0;top:0;display:block}
     .fx-stamp{position:absolute;left:12px;top:12px;color:var(--mute);font-size:13px;font-variant-numeric:tabular-nums;pointer-events:none}
+    .fx-styles{position:absolute;left:12px;top:38px;display:flex;gap:3px;padding:3px;border-radius:10px;background:color-mix(in srgb,var(--ink) 9%,transparent);z-index:2}
+    .fx-styles button{padding:5px 11px;border-radius:8px;color:var(--mute);font-size:12px;font-weight:700}
+    .fx-styles button.on{background:var(--bg);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.2)}
     .fx-sent{display:flex;align-items:center;gap:10px;margin-top:12px;font-size:13px;font-weight:700}
     .fx-sentbar{position:relative;flex:1;height:10px;border-radius:5px;background:color-mix(in srgb,var(--dn) 55%,transparent);overflow:hidden}
     .fx-sentbar u{display:block;width:50%;height:100%;background:var(--up);border-radius:5px;transition:width .6s ease}
@@ -2185,7 +2335,36 @@ export function installMemberDashboardTools() {
     .fx-buy:active,.fx-sell:active{transform:none;filter:brightness(.94)}
     .fx-buy i,.fx-sell i{display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:color-mix(in srgb,var(--bg) 22%,transparent)}
     .fx .hint{margin-top:10px}
-    @media(max-width:420px){.fx-input{font-size:18px;padding:12px}.fx-buy,.fx-sell{padding:15px;font-size:18px}}
+    .fx-list{border:1px solid var(--line);border-radius:16px;overflow:hidden;margin-top:12px}
+    .fx-list-head,.fx-row{display:grid;grid-template-columns:minmax(0,1fr) 110px 84px;align-items:center;gap:12px;padding:13px 16px;text-align:left}
+    .fx-list-head{color:var(--mute);font-size:12px;font-weight:600;border-bottom:1px solid var(--line)}
+    .fx-list-head span:nth-child(n+2){text-align:right}
+    .fx-row{width:100%;border-top:1px solid var(--line)}
+    .fx-list-head+.fx-row{border-top:0}
+    .fx-row:hover{background:color-mix(in srgb,var(--ink) 5%,transparent)}
+    .fx-row.on{background:color-mix(in srgb,var(--brand) 10%,transparent)}
+    .fx-row-name{display:flex;align-items:center;gap:12px;min-width:0}
+    .fx-row-name b{display:block}
+    .fx-row-name small{display:block;color:var(--mute);font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .fx-row-num{text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
+    @media(max-width:700px){
+      .fx-chartwrap{margin-inline:calc(-1 * clamp(18px,3.5vw,44px));border-radius:0;border-left:0;border-right:0;height:clamp(340px,56vh,520px)}
+      .fx-list{margin-inline:calc(-1 * clamp(18px,3.5vw,44px));border-radius:0;border-left:0;border-right:0}
+      .fx-input{font-size:18px;padding:12px}
+      .fx-buy,.fx-sell{padding:15px;font-size:18px}
+      .fx-list-head,.fx-row{grid-template-columns:minmax(0,1fr) 92px 72px;padding:12px 18px}
+    }
+    @media(min-width:1024px){
+      .fx{max-width:1180px}
+      .fx-main{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:24px;align-items:start}
+      .fx-chartwrap{height:520px}
+      .fx-right{position:sticky;top:16px}
+      .fx-right .fx-panel{margin-top:0}
+      .fx-fields{grid-template-columns:1fr}
+      .fx-trade{gap:10px}
+      .fx-buy,.fx-sell{padding:16px;font-size:18px}
+      .fx-list-head,.fx-row{grid-template-columns:minmax(0,1fr) 160px 120px}
+    }
   `;
   document.head.appendChild(forexStyle);
 
@@ -2411,7 +2590,7 @@ export function installMemberDashboardTools() {
       } else if (action?.startsWith('profile-')) {
         handleProfileAction(action);
       } else if (action?.startsWith('fx-')) {
-        handleForexAction(action);
+        handleForexAction(action, button);
       } else if (action === 'copy-referral') {
         void copyReferral(button);
       }
