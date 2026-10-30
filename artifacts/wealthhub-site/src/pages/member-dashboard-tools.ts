@@ -1567,7 +1567,7 @@ export function installMemberDashboardTools() {
       try {
         const payload = await requestPublicJson(
           'market-news',
-          'https://biquote.io/api/News/market?maxResults=20&language=en&country=US',
+          'https://biquote.io/api/News/market?maxResults=50&language=en&country=US',
         );
         if (!Array.isArray(payload)) {
           throw new Error('The public news provider returned an unexpected response.');
@@ -1584,10 +1584,17 @@ export function installMemberDashboardTools() {
           const publishedAt = formatPublicDate(
             article.publishedDate ?? article.publishedAt,
           );
+          const imageUrl = safeExternalUrl(article.imageUrl);
+          const media = imageUrl
+            ? `<a class="member-tool-news-thumb" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" tabindex="-1" aria-hidden="true"><img src="${escapeHtml(imageUrl)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.closest('.member-tool-news-card').classList.remove('has-image');this.parentElement.remove()"></a>`
+            : '';
           return [
-            `<article class="member-tool-card">
-              <p class="member-tool-news-meta">${escapeHtml(publisher)}${publishedAt ? ` · ${escapeHtml(publishedAt)}` : ''}</p>
-              <h3><a class="member-tool-news-title" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(title)}</a></h3>
+            `<article class="member-tool-card member-tool-news-card${imageUrl ? ' has-image' : ''}">
+              ${media}
+              <div class="member-tool-news-body">
+                <p class="member-tool-news-meta">${escapeHtml(publisher)}${publishedAt ? ` · ${escapeHtml(publishedAt)}` : ''}</p>
+                <h3><a class="member-tool-news-title" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(title)}</a></h3>
+              </div>
             </article>`,
           ];
         });
@@ -2830,6 +2837,13 @@ export function installMemberDashboardTools() {
     .member-tool-card a{display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
     .member-tool-news-meta,.member-tool-calendar-source{color:var(--mute);font-size:12px}
     .member-tool-news-title{color:var(--ink);line-height:1.45}
+    .member-tool-news-card{margin:0}
+    .member-tool-news-card.has-image{display:grid;grid-template-columns:132px minmax(0,1fr);gap:16px;align-items:center}
+    .member-tool-news-card .member-tool-news-thumb{display:block;width:132px;height:88px;border-radius:10px;overflow:hidden;background:var(--line)}
+    .member-tool-news-card .member-tool-news-thumb img{display:block;width:100%;height:100%;object-fit:cover}
+    .member-tool-news-card h3{margin:4px 0 0}
+    .member-tool-news-card .member-tool-news-meta{margin:0}
+    @media (max-width:560px){.member-tool-news-card.has-image{grid-template-columns:96px minmax(0,1fr);gap:12px}.member-tool-news-card .member-tool-news-thumb{width:96px;height:72px}}
     .member-tool-calendar-meta{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;margin-bottom:10px;color:var(--mute);font-size:12px}
     .member-tool-calendar-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0}
     .member-tool-calendar-facts span{display:grid;gap:4px}
