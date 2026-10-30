@@ -10,6 +10,8 @@ import {
 import { useAuth } from '../lib/auth-context';
 import { SessionLoading } from '@/components/session-loading';
 import { installMemberDashboardTools } from './member-dashboard-tools';
+import { memberInvestments } from './investments-api';
+import { buildMemberOps, handleInvestmentsMessage } from './investments-bridge';
 import './dashboard-page.css';
 
 type DashboardPageProps = {
@@ -1065,6 +1067,32 @@ function buildDashboardDocument(
       });
     }
   `;
+  // Lets scripts inside the iframe call the signed-in Supabase client through the host.
+  // window.__AUVRENTHIA_INV__('load') | ('investInPlan', planId, amount, freq, months) | ...
+  const investmentsBridge = `
+    (function(){
+      var waiting=new Map(),seq=0;
+      window.addEventListener("message",function(e){
+        if(e.source!==window.parent||e.origin!==window.location.origin)return;
+        var m=e.data;
+        if(!m||m.type!=="auvrenthia-inv-result")return;
+        var w=waiting.get(m.id);
+        if(!w)return;
+        waiting.delete(m.id);
+        if(m.ok)w.resolve(m.data);else w.reject(new Error(m.error||"The request failed."));
+      });
+      window.__AUVRENTHIA_INV__=function(op){
+        var args=Array.prototype.slice.call(arguments,1);
+        return new Promise(function(resolve,reject){
+          var id="m"+(++seq)+"-"+Date.now();
+          waiting.set(id,{resolve:resolve,reject:reject});
+          window.parent.postMessage({type:"auvrenthia-inv-call",id:id,op:op,args:args},window.location.origin);
+          setTimeout(function(){if(waiting.delete(id))reject(new Error("The request timed out. Try again."))},30000);
+        });
+      };
+    })();
+  `;
+
   const marketRequestBridge = `
     window.__AUVRENTHIA_MARKET_REQUEST__=function(payload){
       return new Promise((resolve,reject)=>{
@@ -1411,7 +1439,7 @@ function buildDashboardDocument(
     )
     .replace(
       '</head>',
-      () => `<script>window.__AUVRENTHIA_DASHBOARD_STATE__=${serializeInlineScript(initialState)};window.__AUVRENTHIA_DEPOSIT_METHODS__=${serializeInlineScript(depositMethods)};window.__AUVRENTHIA_PROFILE__=${serializeInlineScript(profile)};</script><script>${marketRequestBridge}</script><style>${wealthHubTypography}</style></head>`,
+      () => `<script>window.__AUVRENTHIA_DASHBOARD_STATE__=${serializeInlineScript(initialState)};window.__AUVRENTHIA_DEPOSIT_METHODS__=${serializeInlineScript(depositMethods)};window.__AUVRENTHIA_PROFILE__=${serializeInlineScript(profile)};</script><script>${marketRequestBridge}</script><script>${investmentsBridge}</script><style>${wealthHubTypography}</style></head>`,
     )
     .replace(
       '</body>',
@@ -1605,6 +1633,18 @@ export default function DashboardPage({
         return;
       }
 
+      // Member money actions (plans, withdrawals, signals, loans, balance, history).
+      if (
+        handleInvestmentsMessage(
+          event,
+          frameRef.current,
+          supabase,
+          buildMemberOps(userId),
+        )
+      ) {
+        return;
+      }
+
       if (event.data?.type === 'auvrenthia-profile-auth-request') {
         const requestId = event.data.requestId;
         const action = event.data.action;
@@ -1791,8 +1831,18 @@ export default function DashboardPage({
               });
             if (error) throw error;
             const estimatedUsd = Number(deposit?.estimatedUsd);
+            // Real deposits table (what the admin console approves), not the JSON state.
+            const depositId = await memberInvestments.requestDeposit(
+              client,
+              activeMethod.id,
+              amount,
+              Number.isFinite(estimatedUsd) && estimatedUsd >= 0
+                ? estimatedUsd
+                : null,
+              receiptPath,
+            );
             const request = {
-              id: `DEP-${requestId}`,
+              id: String(depositId),
               methodId: activeMethod.id,
               a: activeMethod.asset,
               net: activeMethod.network,
@@ -1809,34 +1859,8 @@ export default function DashboardPage({
                 typeof deposit?.receiptName === 'string'
                   ? deposit.receiptName.slice(0, 255)
                   : 'payment-receipt',
+              server: true,
             };
-            const { data: currentState, error: readError } = await client
-              .from('member_dashboard_state')
-              .select('data')
-              .eq('user_id', userId)
-              .maybeSingle();
-            if (readError) throw readError;
-            const storedData =
-              currentState?.data && typeof currentState.data === 'object'
-                ? (currentState.data as Record<string, unknown>)
-                : {};
-            const storedRequests = Array.isArray(storedData.depositRequests)
-              ? storedData.depositRequests
-              : [];
-            const { error: saveError } = await client
-              .from('member_dashboard_state')
-              .upsert(
-                {
-                  user_id: userId,
-                  data: {
-                    ...storedData,
-                    cash0: Number(profile.demo_balance) || 0,
-                    depositRequests: [request, ...storedRequests],
-                  },
-                },
-                { onConflict: 'user_id' },
-              );
-            if (saveError) throw saveError;
             respond(true, undefined, request);
           } catch (error: unknown) {
             const message =
@@ -1869,6 +1893,10 @@ export default function DashboardPage({
         setSaveError('');
         const client = supabase;
         if (!client) return;
+        // Deposits live in the deposits table now; keep them out of the JSON state.
+        const persistedRequests = nextState.depositRequests.filter(
+          (request) => !(request as { server?: boolean })?.server,
+        );
         void (async () => {
           try {
             const { error } = await client
@@ -1878,6 +1906,7 @@ export default function DashboardPage({
                   user_id: userId,
                   data: {
                     ...nextState,
+                    depositRequests: persistedRequests,
                     cash0: Number(profile.demo_balance) || 0,
                   },
                 },
