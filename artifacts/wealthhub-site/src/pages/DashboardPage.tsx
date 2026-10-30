@@ -160,6 +160,14 @@ function installMemberDepositMethods() {
     );
   }
 
+  function depositQrPlaceholder(size: number) {
+    return `<div role="img" aria-label="QR code not available" style="width:${size}px;height:${size}px;display:grid;place-items:center;padding:8px;border:1px dashed var(--line);border-radius:10px;color:var(--mute);font-size:12px;text-align:center">QR code not available</div>`;
+  }
+
+  function depositDestinationPlaceholder() {
+    return `<div class="deposit-callout" style="margin-top:16px"><strong>Deposit destination</strong><p>The payment address and QR code appear here once they are published for this method. Do not send any funds until both are shown.</p><div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:12px">${depositQrPlaceholder(132)}<code style="display:block;flex:1;min-width:180px;overflow-wrap:anywhere;color:var(--mute)">Address not available yet</code></div></div>`;
+  }
+
   function selectedDepositMethod() {
     const methods = methodsForAsset(WS.a);
     const selectedIndex = Number.isInteger(WS.net) ? WS.net : 0;
@@ -176,11 +184,11 @@ function installMemberDepositMethods() {
           .map((method) => {
             const qr = method.qrDataUrl
               ? `<img src="${escapeHtml(method.qrDataUrl)}" alt="QR code for ${escapeHtml(method.asset)} on ${escapeHtml(method.network)}" style="width:104px;height:104px;object-fit:contain;border-radius:10px;background:#fff;padding:6px">`
-              : "";
+              : depositQrPlaceholder(104);
             return `<div class="deposit-guide-card"><h3>${escapeHtml(method.asset)} · ${escapeHtml(method.network)}</h3><div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">${qr}<code style="display:block;max-width:100%;overflow-wrap:anywhere;user-select:all">${escapeHtml(method.address)}</code></div></div>`;
           })
           .join("")
-      : '<div class="deposit-callout"><strong>No payment methods are available</strong><p>Contact support before sending a payment. An administrator must configure a destination first.</p></div>';
+      : '<div class="deposit-callout"><strong>No payment methods are available</strong><p>Contact support before sending a payment. An administrator must configure a destination first.</p></div>' + depositDestinationPlaceholder();
     const recent = Array.isArray(ST.depositRequests)
       ? ST.depositRequests
           .filter((request: unknown) => request && typeof request === "object")
@@ -207,7 +215,7 @@ function installMemberDepositMethods() {
       ).values(),
     );
     if (assets.length === 0) {
-      return `<div class="deposit-shell">${depositProgress("choose")}<div class="mp"><div class="mph"><div><h3>No deposit methods available</h3><small>An administrator has not configured a deposit destination yet.</small></div></div><div class="deposit-callout"><strong>No payment destination</strong><p>Contact support before sending a payment. An administrator must add an active method first.</p></div><div class="deposit-actions"><button class="btn alt" id="deposit-back-guide">Back</button></div></div></div>`;
+      return `<div class="deposit-shell">${depositProgress("choose")}<div class="mp"><div class="mph"><div><h3>No deposit methods available</h3><small>An administrator has not configured a deposit destination yet.</small></div></div><div class="deposit-callout"><strong>No payment destination</strong><p>Contact support before sending a payment. An administrator must add an active method first.</p></div>${depositDestinationPlaceholder()}<div class="deposit-actions"><button class="btn alt" id="deposit-back-guide">Back</button></div></div></div>`;
     }
 
     const selectedAsset =
@@ -240,9 +248,9 @@ function installMemberDepositMethods() {
         : "";
     const qr = selected?.qrDataUrl
       ? `<img src="${escapeHtml(selected.qrDataUrl)}" alt="QR code for ${escapeHtml(selected.asset)} on ${escapeHtml(selected.network)}" style="width:132px;height:132px;object-fit:contain;border-radius:10px;background:#fff;padding:6px">`
-      : "";
+      : depositQrPlaceholder(132);
 
-    return `<div class="deposit-shell">${depositProgress("choose")}<div class="mp"><div class="mph"><div><h3>Choose deposit details</h3><small>Use the destination configured by the administrator for this asset and network.</small></div></div><label class="fl" for="wa">Asset</label><select class="sel" id="wa">${assetOptions}</select><label class="fl" for="wn">Network</label><select class="sel" id="wn">${networkOptions}</select>${selected ? `<div class="deposit-callout" style="margin-top:16px"><strong>Deposit destination</strong><p>Send only ${escapeHtml(selected.asset)} using ${escapeHtml(selected.network)}.</p><div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:12px">${qr}<code style="display:block;max-width:100%;overflow-wrap:anywhere;user-select:all">${escapeHtml(selected.address)}</code></div><div class="deposit-actions"><button class="btn alt" id="deposit-method-copy" type="button">Copy address</button></div></div>` : ""}<label class="fl" for="wq">Amount (${escapeHtml(selectedAsset)})</label><div class="amt"><input id="wq" type="number" inputmode="decimal" min="0" step="any" placeholder="0.00" value="${amount}"></div><div class="hint" id="wu">${estimatedValue}</div><div class="err" id="we" role="alert"></div><div class="deposit-callout"><strong>Review notice</strong><p>After paying, attach your receipt for staff review. Payments are not verified or credited automatically.</p></div><div class="deposit-actions"><button class="btn alt" id="deposit-back-guide">Back</button><button class="btn" id="deposit-continue">Continue to receipt</button></div></div></div>`;
+    return `<div class="deposit-shell">${depositProgress("choose")}<div class="mp"><div class="mph"><div><h3>Choose deposit details</h3><small>Use the destination configured by the administrator for this asset and network.</small></div></div><label class="fl" for="wa">Asset</label><select class="sel" id="wa">${assetOptions}</select><label class="fl" for="wn">Network</label><select class="sel" id="wn">${networkOptions}</select>${selected ? `<div class="deposit-callout" style="margin-top:16px"><strong>Deposit destination</strong><p>Send only ${escapeHtml(selected.asset)} using ${escapeHtml(selected.network)}.</p><div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:12px">${qr}<code style="display:block;max-width:100%;overflow-wrap:anywhere;user-select:all">${escapeHtml(selected.address)}</code></div><div class="deposit-actions"><button class="btn alt" id="deposit-method-copy" type="button">Copy address</button></div></div>` : depositDestinationPlaceholder()}<label class="fl" for="wq">Amount (${escapeHtml(selectedAsset)})</label><div class="amt"><input id="wq" type="number" inputmode="decimal" min="0" step="any" placeholder="0.00" value="${amount}"></div><div class="hint" id="wu">${estimatedValue}</div><div class="err" id="we" role="alert"></div><div class="deposit-callout"><strong>Review notice</strong><p>After paying, attach your receipt for staff review. Payments are not verified or credited automatically.</p></div><div class="deposit-actions"><button class="btn alt" id="deposit-back-guide">Back</button><button class="btn" id="deposit-continue">Continue to receipt</button></div></div></div>`;
   };
 
   browserWindow.__getSelectedDepositMethod = selectedDepositMethod;
@@ -946,12 +954,47 @@ function buildDashboardDocument(
     .replace(/function renderKyc\(\)\{[^\n]*\}/, kycStatusRenderer)
     .replace('<title>Harbor – Investing</title>', '<title>Auvrenthia Markets</title>')
     .replace(
+      '["Loan","M3 8h18M5 8V5h14v3M5 8v11h14V8M9 12h6M9 15h6"]',
+      '["Lending","M3 8h18M5 8V5h14v3M5 8v11h14V8M9 12h6M9 15h6"]',
+    )
+    .replace(
       '["My plans","M3 17l6-6 4 4 8-8M15 7h6v6"],',
       '["My plans","M3 17l6-6 4 4 8-8M15 7h6v6"],["Signals","M4 18l4-6 4 3 4-8 4 5M4 21h16"],',
     )
     .replace(
       '["Security and verification","M12 3l8',
       '["Profile","M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"],["Security and verification","M12 3l8',
+    )
+    .replace('<span class="risk r1">Demo only</span>', '')
+    .replace('Available sample balance', 'Available balance')
+    .replace(
+      '<div><span>Connected wallet</span><b>${ST.wallet?short(ST.wallet):"None"}</b></div><div><span>Supported assets</span><b>USDT, USDC, BTC, ETH, BNB, SOL</b></div>',
+      '<div><span>Supported assets</span><b>${safeText([...new Set((window.__AUVRENTHIA_DEPOSIT_METHODS__||[]).map(m=>m&&m.asset).filter(Boolean))].join(", ")||"None configured yet")}</b></div>',
+    )
+    .replace('<button class="btn alt" id="wc">${ST.wallet?"Wallet "+short(ST.wallet):"Connect wallet"}</button>', '')
+    .replace(
+      '<div><span>Withdrawal route</span><b>External address</b></div><div><span>Network fee</span><b>Sample only</b></div>',
+      '<div><span>Withdrawal requests</span><b>Not open yet</b></div>',
+    )
+    .replace(
+      /<div class="deposit-callout"><strong>Review before withdrawing<\/strong>[\s\S]*?\.slice\(0,5\)\)\}/,
+      '<div class="deposit-callout"><strong>Withdrawals are not open yet</strong><p>Withdrawal requests cannot be submitted from the dashboard at the moment. Contact support from the Help center if you need to withdraw funds.</p></div><div class="deposit-actions"><button class="btn alt" type="button" data-tool-action="navigate" data-destination="Help center">Open Help center</button></div>',
+    )
+    .replace(
+      /<div class="wallet-metrics">[\s\S]*?<\/div><\/div>(?=<div class="tabs" role="tablist")/,
+      '<div class="wbal-grid"><div class="wbal"><span>Available balance</span><b id="wallet-available">${fmt(metrics.cash)}</b><small>Ready to use</small></div><div class="wbal"><span>Invested value</span><b id="wallet-invested">${fmt(metrics.invested)}</b><small>Holdings and plan principal</small></div><div class="wbal"><span>Plan profit</span><b id="wallet-plan-profit" class="wallet-profit ${metrics.planProfit>=0?"up":"dn"}">${metrics.plans.length?fmt(metrics.planProfit):"—"}</b><small>Tracked plans only</small></div><div class="wbal"><span>Pending deposits</span><b>${(ST.depositRequests||[]).filter(r=>r&&typeof r==="object"&&/pending/i.test(String(r.status||"pending"))).length}</b><small>Awaiting staff review</small></div></div><div class="wbal-grid wbal-sm">${(()=>{const k=String((window.__AUVRENTHIA_PROFILE__||{}).kyc_status||"none"),L={none:"Not verified",pending:"Under review",verified:"Verified",rejected:"Action required"};return `<div class="wbal"><span>Account status</span><b>${L[k]||"Not verified"}</b><small>Identity verification</small>${k==="verified"?"":`<button class="wbal-link" type="button" data-tool-action="navigate" data-destination="Security and verification">Open verification</button>`}</div>`})()}<div class="wbal"><span>Investment plans</span><b>${metrics.plans.length}</b><small>Tracked in your wallet</small></div><div class="wbal"><span>Deposit requests</span><b>${(ST.depositRequests||[]).length}</b><small>All time</small></div><div class="wbal"><span>Asset classes held</span><b>${metrics.holdings.length}</b><small>Excludes cash and plans</small></div></div>',
+    )
+    .replace('</style>', '.wbal-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:14px 0}.wbal{position:relative;min-width:0;padding:16px 16px 14px 19px;border:1px solid var(--line);border-radius:14px;background:var(--card);overflow:hidden}.wbal::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--brand)}.wbal span{display:block;color:var(--mute);font-size:13px}.wbal b{display:block;margin-top:6px;font-size:22px;letter-spacing:-.02em;overflow-wrap:anywhere}.wbal small{display:block;margin-top:4px;color:var(--mute);font-size:12px}.wbal-sm .wbal b{font-size:18px}.wbal-link{margin-top:8px;color:var(--brand);font-size:13px;font-weight:700;text-decoration:underline}@media(max-width:900px){.wbal-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}</style>')
+    .replaceAll('Wallet overview · sample preview data', 'Wallet overview')
+    .replaceAll('Sample value', 'Current value')
+    .replaceAll('A quick view of what makes up your sample wallet.', 'A quick view of what makes up your wallet.')
+    .replaceAll(
+      'All values are sample preview data and are not connected to a real account. Market asset profit and loss cannot be calculated without cost-basis data.',
+      'Market asset profit and loss is not shown because purchase cost basis is not recorded.',
+    )
+    .replaceAll(
+      'Only returns from sample investment plans are tracked. Profit and loss for market assets is unavailable here because the preview has no purchase cost basis.',
+      'Only returns from investment plans are tracked. Profit and loss for market assets is unavailable because purchase cost basis is not recorded.',
     )
     .replaceAll('Sample only', 'Varies by network')
     .replaceAll('Verification · Tier 2 of 3', 'Identity verification')
