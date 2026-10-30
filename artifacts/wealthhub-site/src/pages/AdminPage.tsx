@@ -513,7 +513,7 @@ function buildAdminDocument(bootstrap: AdminBootstrap) {
   html = replaceRequired(
     html,
     'const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(DB))}catch(e){}}',
-    'const save=()=>{window.parent.postMessage({type:"auvrenthia-admin-state-update",state:DB},window.location.origin)}',
+    'const save=()=>{window.parent.postMessage({type:"auvrenthia-admin-state-update",state:DB},window.__AUVHOST__)}',
     'admin state persistence bridge',
   );
   html = replaceRequired(
@@ -543,7 +543,7 @@ function buildAdminDocument(bootstrap: AdminBootstrap) {
       api.decideWd=async(id,approved,note)=>{need("money");const w=DB.withdrawals.find(x=>x.id===id);if(!w)fail("Withdrawal request not found.");if(w.status!=="pending")fail("Already reviewed.");w.status=approved?"approved":"declined";w.note=note;log("Withdrawal decision recorded: "+w.status,w.id,"No transfer was initiated. "+(note||""));save()};
       api.invite=async(email,role)=>{need("team");const user=DB.users.find(u=>u.email.toLowerCase()===String(email).trim().toLowerCase());if(!user)fail("That person must create an account before you can assign a staff role.");const existing=DB.team.find(x=>x.email.toLowerCase()===user.email.toLowerCase());if(existing)fail("That admin is already on the team.");DB.team.push({id:user.id,email:user.email,role,on:true});log("Staff role assigned",user.email,role);save()};
       api.reset=()=>fail("Password changes must be completed through account recovery.");
-      api.userAction=async(id,action)=>{need("support");const target=U(id);if(!/password/i.test(String(action)))fail("This action is unavailable. Contact support for assistance.");window.parent.postMessage({type:"auvrenthia-admin-password-reset",userId:id},window.location.origin);log("Password reset requested",target.email,"Password reset email requested.");save()};
+      api.userAction=async(id,action)=>{need("support");const target=U(id);if(!/password/i.test(String(action)))fail("This action is unavailable. Contact support for assistance.");window.parent.postMessage({type:"auvrenthia-admin-password-reset",userId:id},window.__AUVHOST__);log("Password reset requested",target.email,"Password reset email requested.");save()};
       const login=document.querySelector("#login");
       const app=document.querySelector("#app");
       if(login)login.hidden=true;
@@ -556,7 +556,7 @@ function buildAdminDocument(bootstrap: AdminBootstrap) {
         app.prepend(notice);
       }
       window.addEventListener("message",event=>{
-        if(event.source!==window.parent||event.origin!==window.location.origin)return;
+        if(event.source!==window.parent||!window.__AUVORIGINOK__(event))return;
         if(event.data?.type==="auvrenthia-admin-persist-result"&&!event.data.ok)toast("This change could not be saved. Please try again.");
       });
       boot();
@@ -571,7 +571,7 @@ function buildAdminDocument(bootstrap: AdminBootstrap) {
     )
     .replace(
       '</head>',
-      `<script>window.__AUVRENTHIA_DEPOSIT_METHODS__=${serializeInlineScript(bootstrap.depositMethods)};</script><style>${appTypography}${adminEmailStyles}</style></head>`,
+      `<script>window.__AUVHOST__=(window.origin&&window.origin!=="null")?window.origin:"*";window.__AUVORIGINOK__=function(e){return window.__AUVHOST__==="*"||e.origin===window.__AUVHOST__};window.__AUVRENTHIA_DEPOSIT_METHODS__=${serializeInlineScript(bootstrap.depositMethods)};</script><style>${appTypography}${adminEmailStyles}</style></head>`,
     )
     .replace(
       '</body>',
