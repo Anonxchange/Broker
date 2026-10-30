@@ -37,6 +37,8 @@ type AuthContextValue = {
   signUp: (input: SignUpInput) => Promise<boolean>;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
+  signOutEverywhere: () => Promise<void>;
+  changePassword: (password: string) => Promise<void>;
   refreshProfile: () => Promise<void>;
 };
 
@@ -221,6 +223,32 @@ export function AuthProvider({ children }: PropsWithChildren) {
     }
   }, []);
 
+  const signOutEverywhere = useCallback(async () => {
+    if (!supabase) {
+      throw new Error('Supabase is not configured for this deployment.');
+    }
+    const { error } = await supabase.auth.signOut({ scope: 'global' });
+    if (error) throw error;
+
+    authVersionRef.current += 1;
+    profileRequestRef.current += 1;
+    setSession(null);
+    setProfile(null);
+    setProfileError('');
+    setLoading(false);
+  }, []);
+
+  const changePassword = useCallback(async (password: string) => {
+    if (!supabase) {
+      throw new Error('Supabase is not configured for this deployment.');
+    }
+    if (password.length < 8 || password.length > 72) {
+      throw new Error('Use a password between 8 and 72 characters.');
+    }
+    const { error } = await supabase.auth.updateUser({ password });
+    if (error) throw error;
+  }, []);
+
   const refreshProfile = useCallback(async () => {
     if (!session) return;
     await loadProfile(session.user.id, authVersionRef.current);
@@ -238,6 +266,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
       signUp,
       signInWithGoogle,
       signOut,
+      signOutEverywhere,
+      changePassword,
       refreshProfile,
     }),
     [
@@ -249,6 +279,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
       signIn,
       signInWithGoogle,
       signOut,
+      signOutEverywhere,
+      changePassword,
       signUp,
     ],
   );
