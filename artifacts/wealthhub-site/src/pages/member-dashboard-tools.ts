@@ -1597,14 +1597,14 @@ export function installMemberDashboardTools() {
         action,
         ...payload,
       },
-      window.location.origin,
+      (window as unknown as { __AUVHOST__: string }).__AUVHOST__,
     );
   };
 
   window.addEventListener('message', (event: MessageEvent) => {
     if (
       event.source !== window.parent ||
-      event.origin !== window.location.origin ||
+      !(window as unknown as { __AUVORIGINOK__: (e: MessageEvent) => boolean }).__AUVORIGINOK__(event) ||
       event.data?.type !== 'auvrenthia-profile-auth-response' ||
       typeof event.data.requestId !== 'string'
     ) {
