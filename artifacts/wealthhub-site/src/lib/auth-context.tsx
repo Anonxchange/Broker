@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type PropsWithChildren,
 } from 'react';
@@ -46,9 +47,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [profile, setProfile] = useState<AppProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [profileError, setProfileError] = useState('');
+  const authVersionRef = useRef(0);
+  const profileRequestRef = useRef(0);
 
-  const loadProfile = useCallback(async (userId: string) => {
+  const loadProfile = useCallback(async (userId: string, authVersion: number) => {
     if (!supabase) return null;
+    const requestId = ++profileRequestRef.current;
     setProfileError('');
 
     const { data, error } = await supabase
@@ -58,6 +62,13 @@ export function AuthProvider({ children }: PropsWithChildren) {
       )
       .eq('id', userId)
       .maybeSingle();
+
+    if (
+      authVersion !== authVersionRef.current ||
+      requestId !== profileRequestRef.current
+    ) {
+      return null;
+    }
 
     if (error) {
       setProfile(null);
@@ -88,6 +99,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
     let active = true;
     const applySession = async (nextSession: Session | null) => {
       if (!active) return;
+      const authVersion = ++authVersionRef.current;
+      profileRequestRef.current += 1;
       setSession(nextSession);
       setProfileError('');
       if (!nextSession) {
@@ -97,14 +110,22 @@ export function AuthProvider({ children }: PropsWithChildren) {
       }
 
       setLoading(true);
-      await loadProfile(nextSession.user.id);
-      if (active) setLoading(false);
+      try {
+        await loadProfile(nextSession.user.id, authVersion);
+      } catch (error) {
+        if (active && authVersion === authVersionRef.current) {
+          setProfile(null);
+          setProfileError(
+            error instanceof Error
+              ? error.message
+              : 'Your profile could not be loaded. Please try again.',
+          );
+        }
+      }
+      if (active && authVersion === authVersionRef.current) setLoading(false);
     };
 
-    void supabase.auth.getSession().then(({ data, error }) => {
-      if (error) setProfileError(error.message);
-      return applySession(data.session);
-    });
+    const initialAuthVersion = authVersionRef.current;
 
     const {
       data: { subscription },
@@ -113,8 +134,33 @@ export function AuthProvider({ children }: PropsWithChildren) {
       void Promise.resolve().then(() => applySession(nextSession));
     });
 
+    void supabase.auth
+      .getSession()
+      .then(({ data, error }) => {
+        if (!active || authVersionRef.current !== initialAuthVersion) return;
+        if (error) {
+          setProfileError(error.message);
+          setProfile(null);
+          setLoading(false);
+          return;
+        }
+        return applySession(data.session);
+      })
+      .catch((error: unknown) => {
+        if (!active || authVersionRef.current !== initialAuthVersion) return;
+        setProfileError(
+          error instanceof Error
+            ? error.message
+            : 'Your sign-in session could not be loaded. Please try again.',
+        );
+        setProfile(null);
+        setLoading(false);
+      });
+
     return () => {
       active = false;
+      authVersionRef.current += 1;
+      profileRequestRef.current += 1;
       subscription.unsubscribe();
     };
   }, [loadProfile]);
@@ -160,6 +206,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, []);
 
   const signOut = useCallback(async () => {
+    authVersionRef.current += 1;
+    profileRequestRef.current += 1;
     try {
       if (supabase) {
         const { error } = await supabase.auth.signOut({ scope: 'local' });
@@ -175,7 +223,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
   const refreshProfile = useCallback(async () => {
     if (!session) return;
-    await loadProfile(session.user.id);
+    await loadProfile(session.user.id, authVersionRef.current);
   }, [loadProfile, session]);
 
   const value = useMemo<AuthContextValue>(
