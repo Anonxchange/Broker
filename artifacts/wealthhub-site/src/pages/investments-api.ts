@@ -202,8 +202,16 @@ export async function loadMemberInvestments(supabase: SupabaseClient, userId: st
     supabase.from('app_settings').select('*').eq('id', 'global').maybeSingle(),
     supabase.from('balance_ledger').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(200),
   ]);
+  // Name/terms for plans the member holds, even after an admin switched the plan off.
+  const heldPlanIds = Array.from(
+    new Set(((userPlans.data ?? []) as Array<{ plan_id: string }>).map((row) => row.plan_id)),
+  );
+  const positionPlans = heldPlanIds.length
+    ? must(await supabase.from('plans').select('*').in('id', heldPlanIds))
+    : [];
   return {
     profile: profile.data,
+    positionPlans,
     methods: must(methods),
     deposits: must(deposits),
     withdrawals: must(withdrawals),
