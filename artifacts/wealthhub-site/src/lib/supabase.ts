@@ -27,7 +27,7 @@ export type AppProfile = {
   country: string;
   phone: string;
   admin_note: string;
-  role: 'member' | 'admin' | 'owner' | 'finance' | 'support';
+  role: 'member' | 'owner' | 'finance' | 'support';
   account_status: 'active' | 'hold' | 'suspended' | 'archived';
   kyc_status: 'none' | 'pending' | 'verified' | 'rejected';
   withdrawals_enabled: boolean;
@@ -39,12 +39,7 @@ export type AppProfile = {
 export function isStaffRole(
   role: AppProfile['role'] | null | undefined,
 ): role is Exclude<AppProfile['role'], 'member'> {
-  return (
-    role === 'admin' ||
-    role === 'owner' ||
-    role === 'finance' ||
-    role === 'support'
-  );
+  return role === 'owner' || role === 'finance' || role === 'support';
 }
 
 export function serializeInlineScript(value: unknown) {
