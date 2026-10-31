@@ -1760,7 +1760,7 @@ function AppContent() {
         <main className="auth-shell">
           <section className="auth-card">
             <h1>Admin access required</h1>
-            <p>Your account does not have an admin role.</p>
+            <p>Your account does not have staff access.</p>
             <button className="auth-submit" onClick={() => setLocation('/dashboard')}>
               Go to dashboard
             </button>
