@@ -976,10 +976,7 @@ export function installMemberDashboardTools() {
     }
   };
 
-  // ---- Help center: support tickets -------------------------------------
-  // Tickets are not stored anywhere yet. Flip this to true once
-  // sendSupportTicket below is connected to Supabase.
-  const SUPPORT_TICKETS_CONNECTED = false;
+  // ---- Help center: support tickets (saved in support_tickets) -----------
 
   type SupportTicketInput = {
     email: string;
@@ -995,6 +992,7 @@ export function installMemberDashboardTools() {
     category: string;
     status: 'open' | 'in_review' | 'resolved';
     createdAt: number;
+    replies: { body: string; createdAt: number }[];
   };
 
   const SUPPORT_CATEGORIES = [
@@ -1006,18 +1004,14 @@ export function installMemberDashboardTools() {
     'Other',
   ];
   const SUPPORT_PRIORITIES = ['Low', 'Normal', 'High'];
-  // Filled from Supabase later. Shape: SupportTicketRow.
-  const supportTickets: SupportTicketRow[] = [];
+  let supportTickets: SupportTicketRow[] = [];
 
-  // TODO(supabase): send the ticket to the parent page with postMessage
-  // (same pattern as the deposit request), then insert it into a tickets
-  // table under the signed-in user's id. Resolve when saved, throw on error.
-  const sendSupportTicket = async (_ticket: SupportTicketInput) => {
-    if (!SUPPORT_TICKETS_CONNECTED) {
-      throw new Error(
-        'Support tickets are not connected yet, so nothing was sent. Please try again later.',
-      );
-    }
+  const sendSupportTicket = async (ticket: SupportTicketInput) => {
+    const reply = await sendProfileRequest('create-ticket', { ...ticket });
+    void loadTickets().catch(() => {
+      // The list refreshes the next time the Help center opens.
+    });
+    return reply.message;
   };
 
   const memberEmail = () => {
@@ -1037,10 +1031,33 @@ export function installMemberDashboardTools() {
       ? supportTickets
           .map((ticket) => {
             const [label, tone] = ticketStatus[ticket.status] || ticketStatus.open;
-            return `<div class="help-ticket-row"><div class="help-ticket-main"><b>${escapeHtml(ticket.subject)}</b><small>${escapeHtml(ticket.id)} · ${escapeHtml(ticket.category)} · ${escapeHtml(new Date(ticket.createdAt).toLocaleDateString())}</small></div><span class="risk ${tone}">${label}</span></div>`;
+            const replies = ticket.replies
+              .map(
+                (reply) =>
+                  `<div class="hint" style="white-space:pre-wrap;margin:6px 0 0 0"><b>Reply from support</b> · ${escapeHtml(new Date(reply.createdAt).toLocaleDateString())}<br>${escapeHtml(reply.body)}</div>`,
+              )
+              .join('');
+            return `<div class="help-ticket-row" style="flex-wrap:wrap"><div class="help-ticket-main"><b>${escapeHtml(ticket.subject)}</b><small>${escapeHtml(ticket.id)} · ${escapeHtml(ticket.category)} · ${escapeHtml(new Date(ticket.createdAt).toLocaleDateString())}</small></div><span class="risk ${tone}">${label}</span>${replies ? `<div style="flex-basis:100%">${replies}</div>` : ''}</div>`;
           })
           .join('')
       : '<div class="help-empty"><b>No tickets yet</b><p>Tickets you open will appear here with their current status.</p></div>';
+
+  const loadTickets = async () => {
+    const reply = await sendProfileRequest('list-tickets');
+    supportTickets = (reply.tickets ?? []).map((row) => ({
+      id: 'T-' + String(row.ticket_no).padStart(5, '0'),
+      subject: textValue(row.subject),
+      category: textValue(row.category),
+      status: (['open', 'in_review', 'resolved'].includes(String(row.status)) ? row.status : 'open') as SupportTicketRow['status'],
+      createdAt: Date.parse(textValue(row.created_at)),
+      replies: ((row.replies as Array<Record<string, unknown>> | undefined) ?? []).map((item) => ({
+        body: textValue(item.body),
+        createdAt: Date.parse(textValue(item.created_at)),
+      })),
+    }));
+    const list = root.querySelector<HTMLElement>('#help-ticket-list');
+    if (list) list.innerHTML = ticketRowsMarkup();
+  };
 
   const helpFaqs: [string, string, [string, string]?][] = [
     [
@@ -1077,7 +1094,7 @@ export function installMemberDashboardTools() {
     ],
     [
       'How does account verification work?',
-      'Verification has three tiers: email verification, face verification, and a government ID showing your current address. You can see your status on the Security and verification page.',
+      'Verification has two tiers: email verification, then a government ID (passport, national ID card or driving licence). No selfie is needed. You can see your status on the Security and verification page.',
     ],
     [
       'Can I connect a crypto wallet?',
@@ -1184,13 +1201,13 @@ export function installMemberDashboardTools() {
 
     button.setAttribute('disabled', 'true');
     try {
-      await sendSupportTicket(ticket);
+      const sent = await sendSupportTicket(ticket);
       ['help-subject', 'help-reference', 'help-message'].forEach((id) => {
         const field = root.querySelector<HTMLInputElement | HTMLTextAreaElement>(`#${id}`);
         if (field) field.value = '';
       });
       if (successBox) {
-        successBox.textContent = 'Your ticket was submitted. We will reply by email.';
+        successBox.textContent = sent || 'Your ticket was submitted. We will reply by email.';
         successBox.hidden = false;
       }
     } catch (error) {
@@ -1204,21 +1221,30 @@ export function installMemberDashboardTools() {
     }
   };
 
-  // ---- Security and verification (frontend only) ------------------------
-  // Nothing here is connected yet. Set SECURITY_CONNECTED to true once the
-  // actions in runSecurityAction are wired up, and fill securityState from
-  // your database so the statuses are real.
-  const SECURITY_CONNECTED = false;
-
+  // ---- Security and verification: two tiers (email, then government ID) ----
   type TierStatus = 'not_started' | 'pending' | 'verified' | 'rejected';
   const securityState: {
-    tiers: [TierStatus, TierStatus, TierStatus];
-    rejectionReasons: [string, string, string];
+    tiers: [TierStatus, TierStatus];
+    rejectionReasons: [string, string];
     twoFactorEnabled: boolean;
   } = {
-    tiers: ['not_started', 'not_started', 'not_started'],
-    rejectionReasons: ['', '', ''],
+    tiers: ['not_started', 'not_started'],
+    rejectionReasons: ['', ''],
     twoFactorEnabled: false,
+  };
+  let emailVerifiedCache = false;
+  let idFormOpen = false;
+  const ID_MAX_BYTES = 5 * 1024 * 1024;
+
+  const syncSecurityState = (emailVerified: boolean, submission?: Record<string, unknown> | null) => {
+    const status = String(authProfile().kyc_status || 'none');
+    securityState.tiers[0] = emailVerified ? 'verified' : 'not_started';
+    securityState.tiers[1] =
+      status === 'verified' ? 'verified' : status === 'pending' ? 'pending' : status === 'rejected' ? 'rejected' : 'not_started';
+    if (submission !== undefined) {
+      securityState.rejectionReasons[1] =
+        status === 'rejected' && submission ? textValue(submission.rejection_reason) : '';
+    }
   };
 
   const tierStatusLabel: Record<TierStatus, [string, string]> = {
@@ -1229,9 +1255,8 @@ export function installMemberDashboardTools() {
   };
 
   const verificationTiers: [string, string, string, string][] = [
-    ['Tier 1 · Email verification', 'Confirm the email address on your account.', 'Verify email', 'verify-email'],
-    ['Tier 2 · Face verification', 'Complete a face check after your email is verified.', 'Start face check', 'start-face-check'],
-    ['Tier 3 · Government ID with address', 'Submit an eligible ID showing your current residential address.', 'Upload documents', 'upload-documents'],
+    ['Tier 1 · Email verification', 'Confirm the email address on your account.', 'Resend confirmation email', 'verify-email'],
+    ['Tier 2 · Government ID', "Submit a valid passport, national ID card or driver's licence. No selfie is needed.", 'Submit your ID', 'upload-documents'],
   ];
 
   const maskedEmail = () => {
@@ -1241,13 +1266,83 @@ export function installMemberDashboardTools() {
     return `${email.slice(0, Math.min(2, at))}***${email.slice(at)}`;
   };
 
-  // TODO: connect each action (email verification, face check provider,
-  // document upload, password change, two-factor setup, sign out everywhere).
-  const runSecurityAction = async (action: string): Promise<string> => {
-    void action;
-    if (!SECURITY_CONNECTED) {
-      return 'This action is not available yet. Nothing was changed.';
+  const loadKyc = async () => {
+    const reply = await sendProfileRequest('kyc-status');
+    applyProfileReply(reply);
+    const kyc = reply.kyc as { emailVerified?: boolean; submission?: Record<string, unknown> | null } | undefined;
+    emailVerifiedCache = Boolean(kyc?.emailVerified);
+    syncSecurityState(emailVerifiedCache, kyc?.submission ?? null);
+    if (page === 'Security and verification') renderSecurity();
+  };
+
+  const submitIdForm = async (): Promise<string> => {
+    const field = (id: string) =>
+      (root.querySelector<HTMLInputElement | HTMLSelectElement>('#' + id)?.value || '').trim();
+    const showError = (message: string) => {
+      const target = root.querySelector<HTMLElement>('#id-error');
+      if (target) target.textContent = message;
+      return '';
+    };
+    showError('');
+    const docType = field('id-type');
+    const number = field('id-number');
+    const country = field('id-country');
+    const dob = field('id-dob');
+    const expiry = field('id-expiry');
+    const front = root.querySelector<HTMLInputElement>('#id-front')?.files?.[0];
+    const back = root.querySelector<HTMLInputElement>('#id-back')?.files?.[0];
+    if (number.length < 4) return showError('Enter the document number.');
+    if (country.length < 2) return showError('Enter the issuing country.');
+    if (!dob || !expiry) return showError('Enter your date of birth and the expiry date.');
+    if (!front) return showError('Upload the front of your document.');
+    if (docType !== 'passport' && !back) return showError('Upload the back of your document.');
+    for (const file of [front, back]) {
+      if (!file) continue;
+      if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) return showError('Use PNG, JPG or WebP images.');
+      if (file.size === 0 || file.size > ID_MAX_BYTES) return showError('Each image must be under 5 MB.');
     }
+    const reply = await sendProfileRequest('submit-kyc', {
+      documentType: docType,
+      documentNumber: number,
+      country,
+      dob,
+      expiry,
+      front: await front.arrayBuffer(),
+      back: back ? await back.arrayBuffer() : null,
+    });
+    applyProfileReply(reply);
+    idFormOpen = false;
+    emailVerifiedCache = true;
+    syncSecurityState(true, null);
+    renderSecurity();
+    const notice = root.querySelector<HTMLElement>('#security-notice');
+    if (notice) {
+      notice.textContent = reply.message || 'Your ID was submitted for review.';
+      notice.hidden = false;
+    }
+    return '';
+  };
+
+  const runSecurityAction = async (action: string): Promise<string> => {
+    if (action === 'verify-email') return (await sendProfileRequest('resend-confirmation')).message;
+    if (action === 'upload-documents') {
+      idFormOpen = true;
+      renderSecurity();
+      return '';
+    }
+    if (action === 'cancel-id') {
+      idFormOpen = false;
+      renderSecurity();
+      return '';
+    }
+    if (action === 'submit-id') return submitIdForm();
+    if (action === 'change-password' || action === 'sign-out-all') {
+      document.querySelectorAll<HTMLButtonElement>('#nav .nav').forEach((nav) => {
+        if (nav.dataset.p === 'Profile') nav.click();
+      });
+      return '';
+    }
+    if (action === 'two-factor') return 'Two-factor authentication is not available yet.';
     return '';
   };
 
@@ -1285,18 +1380,47 @@ export function installMemberDashboardTools() {
       })
       .join('');
 
+  const idFormMarkup = () => {
+    const open =
+      idFormOpen &&
+      securityState.tiers[0] === 'verified' &&
+      (securityState.tiers[1] === 'not_started' || securityState.tiers[1] === 'rejected');
+    if (!open) return '';
+    const file = (id: string, label: string) =>
+      `<div><label class="fl" for="${id}">${label}</label><input class="help-input" id="${id}" type="file" accept="image/png,image/jpeg,image/webp"></div>`;
+    const text = (id: string, label: string, extra = '') =>
+      `<div><label class="fl" for="${id}">${label}</label><input class="help-input" id="${id}" ${extra}></div>`;
+    return `<div class="mp security-card"><h3>Submit your ID</h3>
+      <p class="hint">Use a clear, uncropped photo of the whole document. PNG, JPG or WebP, up to 5 MB each.</p>
+      <div class="help-grid">
+        <div><label class="fl" for="id-type">Document type</label><select class="sel" id="id-type"><option value="passport">Passport</option><option value="national_id">National ID card</option><option value="drivers_license">Driver's licence</option></select></div>
+        ${text('id-number', 'Document number', 'type="text" maxlength="40" autocomplete="off"')}
+        ${text('id-country', 'Issuing country', 'type="text" maxlength="60"')}
+        ${text('id-dob', 'Date of birth', 'type="date"')}
+        ${text('id-expiry', 'Expiry date', 'type="date"')}
+        ${file('id-front', 'Front of document')}
+        ${file('id-back', 'Back of document (not needed for passports)')}
+      </div>
+      <div class="err" id="id-error" role="alert"></div>
+      <div class="deposit-actions">
+        <button class="btn" type="button" data-tool-action="security-action" data-security-action="submit-id">Submit for review</button>
+        <button class="btn alt" type="button" data-tool-action="security-action" data-security-action="cancel-id">Cancel</button>
+      </div>
+    </div>`;
+  };
+
   const renderSecurity = () => {
     const verifiedCount = securityState.tiers.filter((status) => status === 'verified').length;
 
     if (securityView === 'verification') {
       root.innerHTML = `<button class="btn alt security-back" type="button" data-tool-action="security-back">← Back to security</button>
-        <div class="head"><div><div class="lbl">Account protection</div><div class="bal">Identity verification</div></div><span class="risk ${verifiedCount === 3 ? 'r1' : 'security-badge-muted'}">${verifiedCount} of 3 tiers verified</span></div>
+        <div class="head"><div><div class="lbl">Account protection</div><div class="bal">Identity verification</div></div><span class="risk ${verifiedCount === 2 ? 'r1' : 'security-badge-muted'}">${verifiedCount} of 2 tiers verified</span></div>
         <p class="note">Complete the tiers in order. Each tier adds another identity check.</p>
         <div class="security-notice" id="security-notice" role="status" hidden></div>
         <div class="mp security-card">
           <ol class="security-list" aria-label="Verification tiers">${tiersMarkup()}</ol>
           <p class="hint">Documents you submit are reviewed by our team and are visible only to you and authorized staff.</p>
-        </div>`;
+        </div>${idFormMarkup()}`;
       return;
     }
 
@@ -1325,7 +1449,7 @@ export function installMemberDashboardTools() {
 
       <h2 class="sec">Identity verification</h2>
       <button class="security-status-bar" type="button" data-tool-action="open-verification" aria-label="Open identity verification. Status: ${escapeHtml(summaryLabel)}">
-        <span class="security-status-text"><b>Identity verification</b><small>${verifiedCount} of 3 tiers verified</small></span>
+        <span class="security-status-text"><b>Identity verification</b><small>${verifiedCount} of 2 tiers verified</small></span>
         <span class="security-status-side"><span class="risk ${summaryTone}">${summaryLabel}</span><span class="security-chevron" aria-hidden="true">›</span></span>
       </button>`;
   };
@@ -1367,11 +1491,9 @@ export function installMemberDashboardTools() {
     }
   };
 
-  // ---- Profile (frontend only) ------------------------------------------
-  // Nothing is saved yet. Set PROFILE_CONNECTED to true once saving and
-  // avatar upload are wired to Supabase. The picture is only previewed in
-  // this browser until then.
-  const PROFILE_CONNECTED = false;
+  // ---- Profile -------------------------------------------------------------
+  // Saves and the profile picture go through the React host
+  // (auvrenthia-profile-request, handled by profile-requests.ts).
   const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
   type ProfileAuthAction = 'change-password' | 'sign-out-all-devices';
   const pendingProfileAuthRequests = new Map<
@@ -1406,6 +1528,8 @@ export function installMemberDashboardTools() {
     profileDraft.phone = textValue(profile.phone);
     profileDraft.country = textValue(profile.country);
     profileDraft.address = textValue(profile.address);
+    profileDraft.state = textValue(profile.state);
+    profileDraft.postal = textValue(profile.postal);
     profileDraftLoaded = true;
   };
 
@@ -1638,6 +1762,119 @@ export function installMemberDashboardTools() {
     updateProfileAuthFeedback(pending.action, ok, message);
   });
 
+  type ProfileReply = { message: string; profile?: Record<string, unknown>; avatarUrl?: string; kyc?: Record<string, unknown>;
+    tickets?: Array<Record<string, unknown>>; announcements?: Array<Record<string, unknown>> };
+  const pendingProfileRequests = new Map<
+    string,
+    { resolve: (reply: ProfileReply) => void; reject: (error: Error) => void; timeout: ReturnType<typeof setTimeout> }
+  >();
+  const sendProfileRequest = (action: string, payload: Record<string, unknown> = {}): Promise<ProfileReply> =>
+    new Promise((resolve, reject) => {
+      const requestId = crypto.randomUUID();
+      const timeout = setTimeout(() => {
+        if (pendingProfileRequests.delete(requestId)) {
+          reject(new Error('The request timed out. Check your connection and try again.'));
+        }
+      }, 30_000);
+      pendingProfileRequests.set(requestId, { resolve, reject, timeout });
+      window.parent.postMessage(
+        { type: 'auvrenthia-profile-request', requestId, action, ...payload },
+        (window as unknown as { __AUVHOST__: string }).__AUVHOST__,
+      );
+    });
+  window.addEventListener('message', (event: MessageEvent) => {
+    if (
+      event.source !== window.parent ||
+      !(window as unknown as { __AUVORIGINOK__: (e: MessageEvent) => boolean }).__AUVORIGINOK__(event) ||
+      event.data?.type !== 'auvrenthia-profile-response' ||
+      typeof event.data.requestId !== 'string'
+    ) {
+      return;
+    }
+    const pending = pendingProfileRequests.get(event.data.requestId);
+    if (!pending) return;
+    clearTimeout(pending.timeout);
+    pendingProfileRequests.delete(event.data.requestId);
+    if (event.data.ok === true) {
+      pending.resolve({
+        message: typeof event.data.message === 'string' ? event.data.message : '',
+        profile: event.data.profile && typeof event.data.profile === 'object' ? event.data.profile : undefined,
+        avatarUrl: typeof event.data.avatarUrl === 'string' ? event.data.avatarUrl : undefined,
+        kyc: event.data.kyc && typeof event.data.kyc === 'object' ? event.data.kyc : undefined,
+        tickets: Array.isArray(event.data.tickets) ? event.data.tickets : undefined,
+        announcements: Array.isArray(event.data.announcements) ? event.data.announcements : undefined,
+      });
+    } else {
+      pending.reject(
+        new Error(
+          typeof event.data.message === 'string' && event.data.message
+            ? event.data.message.slice(0, 300)
+            : 'The request could not be completed. Please try again.',
+        ),
+      );
+    }
+  });
+  const applyProfileReply = (reply: ProfileReply) => {
+    if (reply.profile) {
+      (window as unknown as { __AUVRENTHIA_PROFILE__: Record<string, unknown> }).__AUVRENTHIA_PROFILE__ = {
+        ...authProfile(),
+        ...reply.profile,
+      };
+    }
+    if (typeof reply.avatarUrl === 'string') {
+      profileAvatarUrl = reply.avatarUrl || null;
+      applyAvatar();
+    }
+  };
+  // Pull the saved picture, state and postal code once when the dashboard opens.
+  sendProfileRequest('load')
+    .then((reply) => {
+      applyProfileReply(reply);
+      const saved = authProfile();
+      if (!profileDraft.state) profileDraft.state = textValue(saved.state);
+      if (!profileDraft.postal) profileDraft.postal = textValue(saved.postal);
+      if (page === 'Profile') renderProfile();
+    })
+    .catch(() => {
+      // The profile page still works; the picture appears after the next load.
+    });
+  loadKyc().catch(() => {
+    // Verification status loads again when the member opens that page.
+  });
+
+  // Announcements from the admin console appear under Notifications in the profile menu.
+  const renderAnnouncements = (rows: Array<Record<string, unknown>>) => {
+    const view = document.querySelector<HTMLElement>('[data-profile-view="notifications"]');
+    if (!view) return;
+    const empty = view.querySelector<HTMLElement>('.profile-dropdown__empty');
+    let list = view.querySelector<HTMLElement>('.auv-notes');
+    if (!list) {
+      list = document.createElement('div');
+      list.className = 'auv-notes';
+      list.style.cssText = 'max-height:280px;overflow:auto';
+      view.appendChild(list);
+    }
+    if (empty) empty.hidden = rows.length > 0;
+    list.innerHTML = rows
+      .map((row) => {
+        const when = new Date(textValue(row.created_at)).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        return `<div style="padding:10px 12px;border-top:1px solid var(--line)"><b style="display:block;font-size:14px">${escapeHtml(row.title)}</b><span style="display:block;font-size:13px;color:var(--mute);white-space:pre-wrap">${escapeHtml(row.body)}</span><small style="color:var(--mute)">${escapeHtml(when)}</small></div>`;
+      })
+      .join('');
+    const recent = rows.filter((row) => Date.now() - Date.parse(textValue(row.created_at)) < 7 * 864e5).length;
+    const label = document.querySelector<HTMLElement>('[data-profile-action="notifications"] span');
+    if (label) label.textContent = recent ? `Notifications (${recent})` : 'Notifications';
+  };
+  const loadAnnouncements = () => {
+    sendProfileRequest('list-announcements')
+      .then((reply) => renderAnnouncements(reply.announcements ?? []))
+      .catch(() => {
+        // Notifications stay as they were.
+      });
+  };
+  loadAnnouncements();
+  window.addEventListener('auvrenthia-server-data', loadAnnouncements);
+
   const handleProfileInput = (event: Event) => {
     const target = event.target;
     if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) return;
@@ -1654,10 +1891,11 @@ export function installMemberDashboardTools() {
     if (key) profileDraft[key] = target.value;
   };
 
-  const handleProfileAvatar = (input: HTMLInputElement) => {
+  const handleProfileAvatar = async (input: HTMLInputElement) => {
     const error = root.querySelector<HTMLElement>('#profile-avatar-error');
     const file = input.files?.[0];
     if (!file) return;
+    if (error) error.textContent = '';
     if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
       if (error) error.textContent = 'Choose a PNG, JPG or WebP image.';
       input.value = '';
@@ -1668,23 +1906,38 @@ export function installMemberDashboardTools() {
       input.value = '';
       return;
     }
-    if (profileAvatarUrl) URL.revokeObjectURL(profileAvatarUrl);
-    profileAvatarUrl = URL.createObjectURL(file);
-    applyAvatar();
-    renderProfile();
-    showProfileNotice('Photo previewed on this device only. Saving profile pictures is not connected yet.');
+    try {
+      showProfileNotice('Uploading your photo…');
+      const bytes = await file.arrayBuffer();
+      const reply = await sendProfileRequest('save-avatar', { bytes });
+      applyProfileReply(reply);
+      renderProfile();
+      showProfileNotice('Profile picture updated.');
+    } catch (failure) {
+      const message = failure instanceof Error ? failure.message : 'The photo could not be saved.';
+      const target = root.querySelector<HTMLElement>('#profile-avatar-error');
+      if (target) target.textContent = message;
+      const notice = root.querySelector<HTMLElement>('#profile-notice');
+      if (notice) notice.hidden = true;
+    } finally {
+      input.value = '';
+    }
   };
 
   const handleProfileAction = (action: string) => {
     if (action === 'profile-remove-avatar') {
-      if (profileAvatarUrl) URL.revokeObjectURL(profileAvatarUrl);
-      profileAvatarUrl = null;
-      applyAvatar();
-      renderProfile();
+      sendProfileRequest('remove-avatar')
+        .then((reply) => {
+          applyProfileReply(reply);
+          renderProfile();
+          showProfileNotice('Profile picture removed.');
+        })
+        .catch((failure: unknown) => {
+          const target = root.querySelector<HTMLElement>('#profile-avatar-error');
+          if (target) target.textContent = failure instanceof Error ? failure.message : 'The photo could not be removed.';
+        });
     } else if (action === 'profile-reset') {
       profileDraftLoaded = false;
-      profileDraft.state = '';
-      profileDraft.postal = '';
       renderProfile();
     } else if (action === 'profile-save') {
       const error = root.querySelector<HTMLElement>('#profile-error');
@@ -1697,10 +1950,36 @@ export function installMemberDashboardTools() {
         if (error) error.textContent = 'Enter a valid phone number.';
         return;
       }
-      if (!PROFILE_CONNECTED) {
-        showProfileNotice('Saving is not connected yet, so nothing was changed.');
-        return;
+      const saveButton = root.querySelector<HTMLButtonElement>('[data-tool-action="profile-save"]');
+      if (saveButton) {
+        saveButton.disabled = true;
+        saveButton.textContent = 'Saving…';
       }
+      sendProfileRequest('save-profile', {
+        fields: {
+          first_name: profileDraft.firstName,
+          last_name: profileDraft.lastName,
+          phone: profileDraft.phone,
+          country: profileDraft.country,
+          state: profileDraft.state,
+          postal: profileDraft.postal,
+          address: profileDraft.address,
+        },
+      })
+        .then((reply) => {
+          applyProfileReply(reply);
+          profileDraftLoaded = false;
+          renderProfile();
+          showProfileNotice('Your profile was saved.');
+        })
+        .catch((failure: unknown) => {
+          if (saveButton) {
+            saveButton.disabled = false;
+            saveButton.textContent = 'Save changes';
+          }
+          const target = root.querySelector<HTMLElement>('#profile-error');
+          if (target) target.textContent = failure instanceof Error ? failure.message : 'Your profile could not be saved.';
+        });
     } else if (action === 'profile-change-password') {
       const error = root.querySelector<HTMLElement>('#profile-password-error');
       const status = root.querySelector<HTMLElement>('#profile-password-status');
@@ -3480,7 +3759,7 @@ export function installMemberDashboardTools() {
       else if (FX_MARKETS[page]) handleForexChange(event);
       else if (page === 'Economic calendar') handleCalendarChange(event);
       else if (page === 'Profile' && event.target instanceof HTMLInputElement && event.target.id === 'profile-avatar-input') {
-        handleProfileAvatar(event.target);
+        void handleProfileAvatar(event.target);
       }
     });
     root.addEventListener('click', (event) => {
@@ -3738,10 +4017,19 @@ export function installMemberDashboardTools() {
   R.Referral = renderReferral;
   R.Profile = renderProfile;
   R.Signals = renderSignals;
-  R['Help center'] = renderHelp;
+  R['Help center'] = () => {
+    renderHelp();
+    void loadTickets().catch(() => {
+      // The list stays empty until the next attempt.
+    });
+  };
   R['Security and verification'] = () => {
     securityView = 'overview';
+    syncSecurityState(emailVerifiedCache);
     renderSecurity();
+    void loadKyc().catch(() => {
+      // The page still shows the last known status.
+    });
   };
 
   if (!Array.isArray(ST.watchlist)) ST.watchlist = [];
@@ -4088,6 +4376,192 @@ export function installMemberDashboardTools() {
       };
     });
     if (typeof hostFns.tickAll === 'function') hostFns.tickAll();
+  });
+
+  // ---- Loans: live from loan_products and loans -----------------------------
+  const loanDraft = { product: '', amount: '', purpose: '' };
+  let loanNotice = '';
+  let loanBusy = false;
+  const loanStatusLabel: Record<string, [string, string]> = {
+    pending: ['Pending review', 'r2'],
+    active: ['Active', 'r1'],
+    repaid: ['Repaid', 'r1'],
+    declined: ['Declined', 'r3'],
+    defaulted: ['Defaulted', 'r3'],
+    cancelled: ['Cancelled', 'security-badge-muted'],
+  };
+  const loanBlockReason = () => {
+    if (!server) return 'Your account is still loading. Try again in a moment.';
+    if (server.settings?.loans_paused) return 'Loan requests are temporarily paused. Please try again later.';
+    if (server.settings?.need_kyc !== false && server.profile?.kyc_status !== 'verified') {
+      return 'Complete identity verification before requesting a loan.';
+    }
+    return '';
+  };
+  const loanQuote = () => {
+    const product = (server?.loanProducts ?? []).find((row) => String(row.id) === loanDraft.product);
+    const amount = Number(loanDraft.amount);
+    if (!product || !(amount > 0)) return '';
+    const total = Math.round(amount * (1 + Number(product.interest_pct) / 100) * 100) / 100;
+    return `You would repay ${dollars(total)} over ${Number(product.term_months)} months (${Number(product.interest_pct)}% flat interest).`;
+  };
+
+  const renderLoanPage = () => {
+    const blocked = loanBlockReason();
+    const products = server?.loanProducts ?? [];
+    const loans = server?.loans ?? [];
+    const hasPending = loans.some((loan) => loan.status === 'pending');
+    if (!products.some((row) => String(row.id) === loanDraft.product)) {
+      loanDraft.product = products.length ? String(products[0].id) : '';
+    }
+    const productCards = products
+      .map((product) => {
+        const id = String(product.id);
+        const on = id === loanDraft.product;
+        return `<button class="mp loan-product" type="button" data-loan-product="${escapeHtml(id)}" aria-pressed="${on}" style="display:block;width:100%;text-align:left;background:none;color:inherit;font:inherit;${on ? 'border-color:var(--ink);' : ''}"><div class="mph"><div><h3>${escapeHtml(product.name)}</h3><small>${escapeHtml(product.description)}</small></div><span class="risk r1">${Number(product.interest_pct)}% flat</span></div><div class="meta"><span>Amount<b>${dollars(Number(product.min_amount))} – ${dollars(Number(product.max_amount))}</b></span><span>Term<b>${Number(product.term_months)} months</b></span></div></button>`;
+      })
+      .join('');
+    const form = products.length
+      ? `<h2 class="sec">Request a loan</h2>
+        ${productCards}
+        <div class="mp">
+          <label class="fl" for="loan-amount">Amount (USD)</label>
+          <input class="sel" id="loan-amount" type="number" inputmode="decimal" min="0" step="0.01" value="${escapeHtml(loanDraft.amount)}" placeholder="0.00">
+          <div class="hint" id="loan-quote">${escapeHtml(loanQuote())}</div>
+          <label class="fl" for="loan-purpose">Purpose (optional)</label>
+          <textarea class="sel" id="loan-purpose" rows="3" maxlength="1000" placeholder="What will the loan be used for?">${escapeHtml(loanDraft.purpose)}</textarea>
+          <div class="err" id="loan-error" role="alert"></div>
+          <button class="btn" type="button" id="loan-submit" data-loan-action="request" style="width:100%"${blocked || hasPending ? ' disabled' : ''}>${hasPending ? 'A request is already under review' : 'Request loan'}</button>
+          <p class="hint">Approved loans are paid into your account balance. Interest is a flat percentage of the amount borrowed.</p>
+        </div>`
+      : '<p class="note">No loan products are available right now.</p>';
+
+    const rows = loans
+      .map((loan) => {
+        const id = String(loan.id);
+        const [label, tone] = loanStatusLabel[String(loan.status)] ?? [String(loan.status), 'security-badge-muted'];
+        const due = Number(loan.total_due) || 0;
+        const repaid = Number(loan.repaid) || 0;
+        const left = Math.max(0, Math.round((due - repaid) * 100) / 100);
+        const dueDate = loan.due_date ? formatDate(new Date(`${String(loan.due_date)}T00:00:00`)) : '–';
+        let actions = '';
+        if (loan.status === 'pending') {
+          actions = `<div class="deposit-actions"><button class="btn alt" type="button" data-loan-action="cancel" data-loan-id="${escapeHtml(id)}">Cancel request</button></div>`;
+        } else if (loan.status === 'active') {
+          actions = `<label class="fl" for="loan-repay-${escapeHtml(id)}">Repayment amount (USD)</label>
+            <div class="amt"><input id="loan-repay-${escapeHtml(id)}" type="number" inputmode="decimal" min="0" step="0.01" value="${left}"><button class="go" type="button" data-loan-action="repay" data-loan-id="${escapeHtml(id)}" style="padding:8px 14px;font-size:14px">Repay</button></div>
+            <div class="err" id="loan-repay-error-${escapeHtml(id)}" role="alert"></div>`;
+        }
+        const note = loan.note && (loan.status === 'declined' || loan.status === 'defaulted') ? `<p class="hint">${escapeHtml(loan.note)}</p>` : '';
+        return `<div class="mp"><div class="mph"><div><h3>${escapeHtml(loan.product_name || 'Loan')}</h3><small>${dollars(Number(loan.principal) || 0)} · ${Number(loan.term_months)} months · due ${dueDate}</small></div><span class="risk ${tone}">${label}</span></div><div class="meta"><span>Total due<b>${dollars(due)}</b></span><span>Repaid<b>${dollars(repaid)}</b></span><span>Remaining<b>${dollars(left)}</b></span></div>${note}${actions}</div>`;
+      })
+      .join('');
+
+    root.innerHTML = `<div class="head"><div><div class="lbl">Borrowing</div><div class="bal">Loan</div></div><span class="risk ${blocked ? 'r3' : 'r1'}">${blocked ? 'Unavailable' : 'Open'}</span></div>
+      ${blocked ? `<div class="security-notice" role="status">${escapeHtml(blocked)}</div>` : ''}
+      ${loanNotice ? `<div class="security-notice" role="status">${escapeHtml(loanNotice)}</div>` : ''}
+      ${form}
+      <h2 class="sec">Your loans</h2>
+      ${rows || '<p class="note">You have no loans yet.</p>'}`;
+    loanNotice = '';
+  };
+  R.Loan = renderLoanPage;
+
+  const finishLoanAction = async (message: string) => {
+    loanNotice = message;
+    try {
+      await refreshServer(false);
+    } catch {
+      // The next background refresh will catch up.
+    }
+    if (page === 'Loan') renderLoanPage();
+  };
+
+  root.addEventListener('input', (event) => {
+    if (page !== 'Loan') return;
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) return;
+    if (target.id === 'loan-amount') {
+      loanDraft.amount = target.value;
+      const quote = root.querySelector<HTMLElement>('#loan-quote');
+      if (quote) quote.textContent = loanQuote();
+    } else if (target.id === 'loan-purpose') {
+      loanDraft.purpose = target.value;
+    }
+  });
+
+  root.addEventListener('click', (event) => {
+    if (page !== 'Loan') return;
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const button = target.closest<HTMLElement>('[data-loan-product],[data-loan-action]');
+    if (!button) return;
+    if (button.dataset.loanProduct) {
+      loanDraft.product = button.dataset.loanProduct;
+      renderLoanPage();
+      return;
+    }
+    if (loanBusy) return;
+    const action = button.dataset.loanAction;
+    const id = button.dataset.loanId || '';
+    const run = async (task: () => Promise<unknown>, done: string, errorBox: HTMLElement | null) => {
+      loanBusy = true;
+      button.setAttribute('disabled', 'true');
+      try {
+        await task();
+        await finishLoanAction(done);
+      } catch (failure) {
+        button.removeAttribute('disabled');
+        if (errorBox) errorBox.textContent = failure instanceof Error ? failure.message : 'The request failed. Please try again.';
+      } finally {
+        loanBusy = false;
+      }
+    };
+
+    if (action === 'request') {
+      const error = root.querySelector<HTMLElement>('#loan-error');
+      if (error) error.textContent = '';
+      const product = (server?.loanProducts ?? []).find((row) => String(row.id) === loanDraft.product);
+      const amount = Math.round(Number(loanDraft.amount) * 100) / 100;
+      const blocked = loanBlockReason();
+      if (blocked) {
+        if (error) error.textContent = blocked;
+      } else if (!product) {
+        if (error) error.textContent = 'Choose a loan product.';
+      } else if (!(amount > 0)) {
+        if (error) error.textContent = 'Enter an amount.';
+      } else if (amount < Number(product.min_amount) || amount > Number(product.max_amount)) {
+        if (error) error.textContent = `Enter an amount between ${dollars(Number(product.min_amount))} and ${dollars(Number(product.max_amount))}.`;
+      } else {
+        void run(
+          async () => {
+            await invCall('requestLoan', loanDraft.product, amount, loanDraft.purpose.trim());
+            loanDraft.amount = '';
+            loanDraft.purpose = '';
+          },
+          'Loan request submitted. Our team will review it.',
+          error,
+        );
+      }
+    } else if (action === 'cancel' && id) {
+      void run(() => invCall('cancelLoanRequest', id), 'Loan request cancelled.', null);
+    } else if (action === 'repay' && id) {
+      const error = root.querySelector<HTMLElement>(`#loan-repay-error-${id}`);
+      if (error) error.textContent = '';
+      const amount = Math.round(Number((root.querySelector<HTMLInputElement>(`#loan-repay-${id}`)?.value) || 0) * 100) / 100;
+      const loan = (server?.loans ?? []).find((row) => String(row.id) === id);
+      const left = loan ? Math.round(((Number(loan.total_due) || 0) - (Number(loan.repaid) || 0)) * 100) / 100 : 0;
+      const balance = serverBalance();
+      if (!(amount > 0)) {
+        if (error) error.textContent = 'Enter an amount.';
+      } else if (amount > left) {
+        if (error) error.textContent = `You only owe ${dollars(left)}.`;
+      } else if (balance !== null && amount > balance) {
+        if (error) error.textContent = 'Not enough balance for this repayment.';
+      } else {
+        void run(() => invCall('repayLoan', id, amount), 'Repayment received. Thank you.', error);
+      }
+    }
   });
 
   // Load the real data now, then keep it fresh (balance, approvals, new signals).
