@@ -646,6 +646,149 @@ const heroBackgrounds = `
     }
   }
 
+  .broker-markets {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1.25rem;
+    margin: 2rem 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .broker-market {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    padding: 1.6rem;
+    border: 1px solid rgba(160, 182, 207, 0.16);
+    border-radius: 1.25rem;
+    background: linear-gradient(155deg, #0e1b2a 0%, #091421 100%);
+  }
+
+  .broker-market__tag {
+    color: #21a1ff;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .broker-market__title {
+    margin: 0.7rem 0 0;
+    color: #f4f6fa;
+    font-size: 1.3rem;
+    font-weight: 650;
+    line-height: 1.25;
+  }
+
+  .broker-market__text {
+    margin: 0.7rem 0 0;
+    color: #aeb9c9;
+    font-size: 0.94rem;
+    line-height: 1.65;
+  }
+
+  .broker-market__link {
+    display: inline-block;
+    margin-top: 1.25rem;
+    color: #21a1ff !important;
+    font-size: 0.92rem;
+    font-weight: 600;
+    text-decoration: none !important;
+  }
+
+  .broker-market__link:hover {
+    color: #80c5ff !important;
+  }
+
+  .broker-market__risk {
+    margin: auto 0 0;
+    padding-top: 1rem;
+    color: #8190a3;
+    font-size: 0.76rem;
+  }
+
+  @media screen and (max-width: 991px) {
+    .broker-markets {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media screen and (max-width: 640px) {
+    .broker-markets {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  .broker-faq {
+    display: grid;
+    gap: 0.85rem;
+    margin: 2rem 0 0;
+    padding: 0;
+  }
+
+  .broker-faq details {
+    border: 1px solid rgba(160, 182, 207, 0.16);
+    border-radius: 1rem;
+    background: linear-gradient(155deg, #0e1b2a 0%, #091421 100%);
+  }
+
+  .broker-faq summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.1rem 1.35rem;
+    color: #f4f6fa;
+    font-size: 1.02rem;
+    font-weight: 600;
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .broker-faq summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .broker-faq summary::after {
+    flex: none;
+    color: #21a1ff;
+    content: "+";
+    font-size: 1.4rem;
+    line-height: 1;
+  }
+
+  .broker-faq details[open] summary::after {
+    content: "\\2212";
+  }
+
+  .broker-faq details p {
+    margin: 0;
+    padding: 0 1.35rem 1.2rem;
+    color: #aeb9c9;
+    font-size: 0.95rem;
+    line-height: 1.7;
+  }
+
+  .broker-cta {
+    box-sizing: border-box;
+    margin: 3.5rem auto 0;
+    padding: 2.75rem 1.75rem;
+    border: 1px solid rgba(33, 161, 255, 0.28);
+    border-radius: 1.5rem;
+    background: linear-gradient(135deg, rgba(33, 161, 255, 0.14), rgba(77, 53, 255, 0.14));
+    text-align: center;
+  }
+
+  .broker-cta .broker-section__intro {
+    margin-right: auto;
+    margin-left: auto;
+  }
+
+  .broker-cta .broker-section__actions {
+    justify-content: center;
+  }
+
   @media screen and (max-width: 991px) {
     .navbar-menu.is-page-height-tablet {
       flex-direction: column !important;
@@ -1056,7 +1199,23 @@ const textReplacements: Record<string, string> = {
   Careers: 'Contact',
   'Wealth Hub and its affiliated services provide educational content only. We do not offer investment advice, portfolio management, or any other service requiring registration or licensing under financial regulations. Nothing on this website, in our Discord community, or within the Wealth Hub Archive constitutes a recommendation, solicitation, or offer to buy or sell any financial instrument. All information is general in nature and for informational purposes only. Users are solely responsible for their own investment decisions and should consult a licensed financial advisor or registered investment professional before acting on any material provided. Use of this site implies acceptance of our full terms and conditions and legal disclaimers.':
     'Investing involves risk, including the possible loss of principal. Asset availability, eligibility, and risks vary by product and jurisdiction. Information on this site is general and is not a personal recommendation. Review relevant product disclosures and consider speaking with a licensed professional before investing.',
+  'Multi–Asset Markets': 'Connected Market Access',
+  'Multi-Asset Markets': 'Connected Market Access',
+  'Explore different asset classes':
+    'Stocks, commodities, crypto, forex and more, all from one account.',
+  'Tools & Information': 'Market Data and Tools',
+  'Market data and platform tools':
+    'Market information and platform tools to support every decision.',
+  'Clear Market Information': 'Transparent Product Terms',
 };
+
+// Matches any text that contains the phrase, for paragraphs whose full wording is not known.
+const substringReplacements: Array<[string, string]> = [
+  [
+    'Learn how each asset class works',
+    'One account connects you to stocks, commodities, crypto, forex, real estate and agriculture. Understand how each market works, review the terms and risks, and invest with clarity and control.',
+  ],
+];
 
 function renderInvestorTestimonials(pageDocument: Document) {
   const strategiesSection =
@@ -1481,6 +1640,11 @@ function renderInvestmentPlans(pageDocument: Document) {
   }
 }
 
+// Image shown in the markets section. The file must be in public/wealthhub/ and
+// the name below is relative to that folder. Change it to your own file, for
+// example 'markets-hero.jpg' or 'markets-hero.webp'.
+const marketsImageFile = 'markets-visual.svg';
+
 // Facts that only the business can supply. Anything left empty is not shown.
 // Examples: established '2021', regulator 'Regulator name and licence number',
 // markets '6 asset classes', supportHours 'Monday to Friday', accountOpening 'About 5 minutes'.
@@ -1491,6 +1655,267 @@ const brokerFacts = {
   supportHours: '',
   accountOpening: '',
 };
+
+const investmentMarkets: Array<{
+  tag: string;
+  title: string;
+  text: string;
+  cta: string;
+  risk: string;
+}> = [
+  {
+    tag: 'Crypto',
+    title: 'Invest in crypto with ease',
+    text: 'Access leading cryptocurrencies and digital assets from the same account you use for every other market, with product terms shown before you invest.',
+    cta: 'Invest in crypto',
+    risk: 'Crypto is highly volatile. Capital at risk.',
+  },
+  {
+    tag: 'Stocks',
+    title: 'Invest in stocks across sectors',
+    text: 'Build a portfolio of listed companies across industries such as technology, healthcare and energy, and match your holdings to your goals.',
+    cta: 'Invest in stocks',
+    risk: 'Capital at risk.',
+  },
+  {
+    tag: 'Forex',
+    title: 'Access the world’s currencies',
+    text: 'Reach major and minor currency pairs in the foreign exchange market, one of the largest and most active financial markets in the world.',
+    cta: 'Access forex',
+    risk: 'Currency markets can move quickly. Capital at risk.',
+  },
+  {
+    tag: 'Commodities',
+    title: 'Discover opportunities in commodities',
+    text: 'Gain exposure to energy, metals and other resources through one account, and diversify beyond traditional assets.',
+    cta: 'Invest in commodities',
+    risk: 'Capital at risk.',
+  },
+  {
+    tag: 'Agriculture',
+    title: 'Invest in agricultural markets',
+    text: 'Access agricultural markets and add real world production to your portfolio, with details on how each product works.',
+    cta: 'Invest in agriculture',
+    risk: 'Capital at risk.',
+  },
+  {
+    tag: 'Real estate',
+    title: 'Add real estate to your portfolio',
+    text: 'Access property focused investment opportunities and add real assets to a portfolio built around your long term goals.',
+    cta: 'Invest in real estate',
+    risk: 'Capital at risk.',
+  },
+];
+
+function buildInvestmentsSection(pageDocument: Document) {
+  const section = pageDocument.createElement('section');
+  section.id = 'investments';
+  section.className = 'broker-section';
+  section.setAttribute('data-testid', 'section-investments');
+
+  const eyebrow = pageDocument.createElement('p');
+  eyebrow.className = 'broker-section__eyebrow';
+  eyebrow.textContent = 'Investments';
+
+  const title = pageDocument.createElement('h2');
+  title.className = 'broker-section__title';
+  title.textContent = 'Every market you invest in, in one place';
+
+  const intro = pageDocument.createElement('p');
+  intro.className = 'broker-section__intro';
+  intro.textContent =
+    'Stocks, commodities, crypto, forex, agriculture and real estate are connected through a single account, so you can diversify, compare products and manage your portfolio without switching platforms.';
+
+  const list = pageDocument.createElement('ul');
+  list.className = 'broker-markets';
+  investmentMarkets.forEach((market) => {
+    const item = pageDocument.createElement('li');
+    item.className = 'broker-market';
+    const tag = pageDocument.createElement('span');
+    tag.className = 'broker-market__tag';
+    tag.textContent = market.tag;
+    const heading = pageDocument.createElement('h3');
+    heading.className = 'broker-market__title';
+    heading.textContent = market.title;
+    const text = pageDocument.createElement('p');
+    text.className = 'broker-market__text';
+    text.textContent = market.text;
+    const link = pageDocument.createElement('a');
+    link.className = 'broker-market__link';
+    link.href = '/signup';
+    link.target = '_top';
+    link.textContent = market.cta + ' →';
+    const risk = pageDocument.createElement('p');
+    risk.className = 'broker-market__risk';
+    risk.textContent = market.risk;
+    item.append(tag, heading, text, link, risk);
+    list.appendChild(item);
+  });
+
+  section.append(eyebrow, title, intro, list);
+  return section;
+}
+
+function buildWhySection(pageDocument: Document) {
+  const section = pageDocument.createElement('section');
+  section.id = 'why-auvrenthia';
+  section.className = 'broker-section';
+  section.setAttribute('data-testid', 'section-why');
+
+  const eyebrow = pageDocument.createElement('p');
+  eyebrow.className = 'broker-section__eyebrow';
+  eyebrow.textContent = 'Why Auvrenthia Markets';
+  const title = pageDocument.createElement('h2');
+  title.className = 'broker-section__title';
+  title.textContent = 'Built for investors who want clarity and control';
+  const intro = pageDocument.createElement('p');
+  intro.className = 'broker-section__intro';
+  intro.textContent =
+    'We designed the platform around three principles: clear information, simple access and straightforward terms.';
+
+  const reasons: Array<[string, string, string]> = [
+    [
+      'Access',
+      'One account, every market',
+      'Invest in stocks, commodities, crypto, forex, agriculture and real estate without opening separate accounts or switching platforms.',
+    ],
+    [
+      'Clarity',
+      'Terms shown before you invest',
+      'Each product comes with its details, requirements and risks, so you know what you are agreeing to before you commit funds.',
+    ],
+    [
+      'Control',
+      'Your portfolio in one dashboard',
+      'Track your account and activity from a single dashboard, and review your investments whenever you sign in.',
+    ],
+    [
+      'Simplicity',
+      'Sign in your way',
+      'Create your account with your email address or your Google account, then fund it and start investing.',
+    ],
+    [
+      'Support',
+      'Help when you need it',
+      `Reach our team at ${contactEmail} with questions about your account, our products or their terms.`,
+    ],
+    [
+      'Responsibility',
+      'Risk information on every product',
+      'We show risk information alongside our products and encourage you to invest only what you can afford to lose.',
+    ],
+  ];
+
+  const list = pageDocument.createElement('ul');
+  list.className = 'broker-markets';
+  reasons.forEach(([tagText, headingText, bodyText]) => {
+    const item = pageDocument.createElement('li');
+    item.className = 'broker-market';
+    const tag = pageDocument.createElement('span');
+    tag.className = 'broker-market__tag';
+    tag.textContent = tagText;
+    const heading = pageDocument.createElement('h3');
+    heading.className = 'broker-market__title';
+    heading.textContent = headingText;
+    const text = pageDocument.createElement('p');
+    text.className = 'broker-market__text';
+    text.textContent = bodyText;
+    item.append(tag, heading, text);
+    list.appendChild(item);
+  });
+
+  section.append(eyebrow, title, intro, list);
+  return section;
+}
+
+function buildFaqSection(pageDocument: Document) {
+  const section = pageDocument.createElement('section');
+  section.id = 'faq';
+  section.className = 'broker-section';
+  section.setAttribute('data-testid', 'section-faq');
+
+  const eyebrow = pageDocument.createElement('p');
+  eyebrow.className = 'broker-section__eyebrow';
+  eyebrow.textContent = 'Questions';
+  const title = pageDocument.createElement('h2');
+  title.className = 'broker-section__title';
+  title.textContent = 'Frequently asked questions';
+
+  const questions: Array<[string, string]> = [
+    [
+      'What can I invest in?',
+      'Through one account you can access crypto, forex, stocks, commodities, agriculture and real estate. Availability varies by product and by country of residence.',
+    ],
+    [
+      'How do I open an account?',
+      'Select Open an account, register with your email address or your Google account, and sign in to your dashboard.',
+    ],
+    [
+      'How do I add funds?',
+      'Sign in to your account to see the deposit methods available to you. Review the terms of any product before you invest.',
+    ],
+    [
+      'What are the risks of investing?',
+      'All investing involves risk, including the possible loss of some or all of your capital. Review the terms and risks of each product before you invest, and only invest what you can afford to lose.',
+    ],
+    [
+      'Is every product available where I live?',
+      'Product availability and eligibility vary by country of residence. If you are unsure whether a product is available to you, contact our support team before investing.',
+    ],
+    [
+      'How do I contact support?',
+      `Email ${contactEmail} with your question and our team will reply to you.`,
+    ],
+  ];
+
+  const list = pageDocument.createElement('div');
+  list.className = 'broker-faq';
+  questions.forEach(([question, answer]) => {
+    const details = pageDocument.createElement('details');
+    const summary = pageDocument.createElement('summary');
+    summary.textContent = question;
+    const body = pageDocument.createElement('p');
+    body.textContent = answer;
+    details.append(summary, body);
+    list.appendChild(details);
+  });
+
+  section.append(eyebrow, title, list);
+  return section;
+}
+
+function buildClosingCta(pageDocument: Document) {
+  const section = pageDocument.createElement('section');
+  section.id = 'open-account';
+  section.className = 'broker-section';
+  section.setAttribute('data-testid', 'section-open-account');
+
+  const box = pageDocument.createElement('div');
+  box.className = 'broker-cta';
+  const title = pageDocument.createElement('h2');
+  title.className = 'broker-section__title';
+  title.textContent = 'Ready to start investing?';
+  const intro = pageDocument.createElement('p');
+  intro.className = 'broker-section__intro';
+  intro.textContent =
+    'Open your account and access stocks, commodities, crypto, forex, agriculture and real estate from one dashboard.';
+  const actions = pageDocument.createElement('div');
+  actions.className = 'broker-section__actions';
+  const cta = pageDocument.createElement('a');
+  cta.href = '/signup';
+  cta.target = '_top';
+  cta.className = 'auvrenthia-primary-cta';
+  cta.textContent = 'Open an account';
+  actions.appendChild(cta);
+  const note = pageDocument.createElement('p');
+  note.className = 'broker-section__note';
+  note.style.marginTop = '1rem';
+  note.textContent =
+    'Capital at risk. Product availability varies by country of residence.';
+  box.append(title, intro, actions, note);
+  section.appendChild(box);
+  return section;
+}
 
 function renderBrokerSections(pageDocument: Document) {
   const pricingSection = pageDocument.querySelector('#pricing');
@@ -1591,6 +2016,10 @@ function renderBrokerSections(pageDocument: Document) {
   wrapper.append(eyebrow, title, intro, steps, actions);
   section.appendChild(wrapper);
   pricingSection.before(section);
+  section.before(buildInvestmentsSection(pageDocument));
+  section.before(buildWhySection(pageDocument));
+  pricingSection.after(buildClosingCta(pageDocument));
+  pricingSection.after(buildFaqSection(pageDocument));
 }
 
 function preparePage(source: string) {
@@ -1755,7 +2184,12 @@ function preparePage(source: string) {
       ...navigationItems.map((label) => {
         const link = pageDocument.createElement('a');
         link.className = 'navbar-link w-inline-block';
-        link.href = label === 'Home' ? '#home' : '#';
+        link.href =
+          label === 'Home'
+            ? '#home'
+            : label === 'Investments' || label === 'Market'
+              ? '#investments'
+              : '#';
         link.textContent = label;
         return link;
       }),
@@ -1829,8 +2263,12 @@ function preparePage(source: string) {
     const rebrandedText = isEmailAddress
       ? undefined
       : normalized.replace(/\bwealth\s*hub\b/gi, 'Auvrenthia Markets');
+    const substringMatch = substringReplacements.find(([needle]) =>
+      normalized.includes(needle),
+    );
     const replacement =
       textReplacements[normalized] ??
+      substringMatch?.[1] ??
       (rebrandedText !== normalized ? rebrandedText : undefined);
 
     if (!isProtected && replacement !== undefined) {
@@ -1920,6 +2358,23 @@ function preparePage(source: string) {
 
   renderInvestorTestimonials(pageDocument);
   renderBrokerSections(pageDocument);
+
+  pageDocument
+    .querySelectorAll<HTMLImageElement>(
+      '.section-strategies .image-wrap img:not(.investor-testimonial__portrait)',
+    )
+    .forEach((image) => {
+      image.closest('picture')?.querySelectorAll('source').forEach((source) => source.remove());
+      image.removeAttribute('srcset');
+      image.removeAttribute('sizes');
+      image.src = marketsImageFile;
+      image.alt =
+        'Stocks, crypto, forex, commodities, real estate and agriculture markets';
+      image.style.width = '100%';
+      image.style.maxWidth = '34rem';
+      image.style.height = 'auto';
+      image.style.objectFit = 'contain';
+    });
   renderInvestmentPlans(pageDocument);
 
   const backgroundStyle = pageDocument.createElement('style');
