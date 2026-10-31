@@ -2017,7 +2017,9 @@ function renderBrokerSections(pageDocument: Document) {
   section.appendChild(wrapper);
   pricingSection.before(section);
   section.before(buildInvestmentsSection(pageDocument));
-  section.before(buildWhySection(pageDocument));
+  // The existing Why Choose section is edited instead of adding a new one.
+  // The wording in buildWhySection is kept for reuse.
+  void buildWhySection;
   pricingSection.after(buildClosingCta(pageDocument));
   pricingSection.after(buildFaqSection(pageDocument));
 }
