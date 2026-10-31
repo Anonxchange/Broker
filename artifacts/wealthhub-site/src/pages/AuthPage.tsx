@@ -19,7 +19,26 @@ export type AuthFormValues = {
   phone: string;
   email: string;
   password: string;
+  referralCode?: string;
 };
+
+const REF_KEY = 'auv_ref';
+const REF_PATTERN = /^[A-Za-z0-9]{4,20}$/;
+
+/** Reads ?ref=CODE from the link, remembers it, and returns the code to prefill. */
+export function readReferralCode(): string {
+  try {
+    const fromUrl = new URLSearchParams(window.location.search).get('ref')?.trim() ?? '';
+    if (REF_PATTERN.test(fromUrl)) {
+      window.localStorage.setItem(REF_KEY, fromUrl.toUpperCase());
+      return fromUrl.toUpperCase();
+    }
+    const stored = window.localStorage.getItem(REF_KEY) ?? '';
+    return REF_PATTERN.test(stored) ? stored : '';
+  } catch {
+    return '';
+  }
+}
 
 function BrandMark() {
   return (
@@ -38,6 +57,8 @@ type FormFieldProps = {
   autoComplete: string;
   type?: string;
   minLength?: number;
+  required?: boolean;
+  defaultValue?: string;
 };
 
 function FormField({
@@ -47,6 +68,8 @@ function FormField({
   autoComplete,
   type = 'text',
   minLength,
+  required = true,
+  defaultValue,
 }: FormFieldProps) {
   return (
     <label className="auth-field">
@@ -56,7 +79,8 @@ function FormField({
         name={name}
         autoComplete={autoComplete}
         placeholder={placeholder}
-        required
+        required={required}
+        defaultValue={defaultValue}
         minLength={minLength}
         data-testid={`input-${name}`}
       />
@@ -137,6 +161,7 @@ export default function AuthPage({
   const [pending, setPending] = useState(false);
   const isAdminLogin = audience === 'admin';
   const isSignup = mode === 'signup' && !isAdminLogin;
+  const [referralDefault] = useState(() => (mode === 'signup' ? readReferralCode() : ''));
 
   useEffect(() => {
     if (!configured) {
@@ -186,6 +211,7 @@ export default function AuthPage({
         phone: String(values.phone || ''),
         email: String(values.email || ''),
         password: String(values.password || ''),
+        referralCode: isSignup ? String(values.referralCode || '').trim().toUpperCase() : undefined,
       });
       if (response) {
         toast.success(response);
@@ -288,6 +314,17 @@ export default function AuthPage({
               placeholder={isSignup ? 'Create a password' : 'Enter your password'}
               minLength={8}
             />
+
+            {isSignup && (
+              <FormField
+                label="Referral code (optional)"
+                name="referralCode"
+                autoComplete="off"
+                placeholder="Enter a code if you have one"
+                required={false}
+                defaultValue={referralDefault}
+              />
+            )}
 
             {isSignup && (
               <FormField
