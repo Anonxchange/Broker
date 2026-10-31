@@ -473,10 +473,8 @@ function installMemberDepositMethods() {
     }
   });
 
-  // ---- Withdrawals: coin picker. Backend is not connected yet. ----------
-  // Set WITHDRAWALS_CONNECTED to true once a withdrawal backend exists; until
-  // then a request is validated but nothing is sent and no balance changes.
-  const WITHDRAWALS_CONNECTED = false;
+  // ---- Withdrawals: coin picker, wired to Supabase (request_withdrawal). ----
+  // The request holds the amount from the balance until an admin decides it.
   const COIN_NAMES: Record<string, string> = {
     USDT: "Tether",
     USDC: "USD Coin",
@@ -517,19 +515,92 @@ function installMemberDepositMethods() {
       <button class="btn" id="wgo" type="button" style="width:100%">Request withdrawal</button>`;
   };
 
+  type MemberApi = {
+    __AUVRENTHIA_INV__?: (op: string, ...args: unknown[]) => Promise<unknown>;
+    __AUVRENTHIA_MEMBER__?: {
+      server: () => {
+        withdrawals?: Array<Record<string, unknown>>;
+        settings?: Record<string, unknown> | null;
+        profile?: Record<string, unknown> | null;
+      } | null;
+      refresh: (repaintAnyPage?: boolean) => Promise<void>;
+    };
+  };
+  const memberApi = () => window as unknown as MemberApi;
+
+  // Why this member cannot withdraw right now, or "" when they can. The
+  // database enforces the same rules; this only gives a clear message first.
+  const withdrawalBlockReason = () => {
+    const data = memberApi().__AUVRENTHIA_MEMBER__?.server();
+    if (!data) return "";
+    if (data.settings?.withdrawals_paused) {
+      return "Withdrawals are temporarily paused. Please try again later.";
+    }
+    if (data.profile && data.profile.withdrawals_enabled === false) {
+      return "Withdrawals are not enabled for your account yet. Contact support.";
+    }
+    if (
+      data.settings?.need_kyc !== false &&
+      data.profile &&
+      data.profile.kyc_status !== "verified"
+    ) {
+      return "Complete identity verification before withdrawing.";
+    }
+    return "";
+  };
+
+  const withdrawalStatusLabel: Record<string, string> = {
+    pending: "Pending review",
+    approved: "Approved",
+    declined: "Declined (amount returned)",
+    cancelled: "Cancelled (amount returned)",
+  };
+  const withdrawalRowsMarkup = () => {
+    const rows = memberApi().__AUVRENTHIA_MEMBER__?.server()?.withdrawals ?? [];
+    if (!rows.length) return '<p class="note">No withdrawals yet.</p>';
+    return rows
+      .slice(0, 10)
+      .map((row) => {
+        const status = String(row.status ?? "pending");
+        const when = new Date(String(row.created_at ?? "")).toLocaleString("en-US", {
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+        });
+        const cancel =
+          status === "pending"
+            ? `<button class="more" type="button" data-wd-cancel="${escapeHtml(row.id)}">Cancel request</button>`
+            : "";
+        const reason =
+          status === "declined" && row.note ? ` · ${escapeHtml(row.note)}` : "";
+        return `<div class="wl"><div class="nm"><div>${escapeHtml(row.asset)} withdrawal<small>${escapeHtml(row.network)} · ${escapeHtml(withdrawalStatusLabel[status] ?? status)}${reason}</small></div></div><div class="r">${escapeHtml(Number(row.amount) || 0)} ${escapeHtml(row.asset)}<small>${fmt(Number(row.usd_amount) || 0)} · ${escapeHtml(when)}</small>${cancel}</div></div>`;
+      })
+      .join("");
+  };
+
   const originalRenderWallet = browserWindow.renderWallet;
   if (typeof originalRenderWallet === "function") {
-    browserWindow.renderWallet = function renderWalletWithWithdrawNotes() {
+    browserWindow.renderWallet = function renderWalletWithWithdrawals() {
       originalRenderWallet();
       if (page !== "Withdraw") return;
       const root = document.querySelector("#misc");
+      const blocked = withdrawalBlockReason();
       const badge = root?.querySelector(".head .risk");
-      if (badge) badge.textContent = WITHDRAWALS_CONNECTED ? "Live" : "Coming soon";
+      if (badge) badge.textContent = blocked ? "Unavailable" : "Live";
       const callout = root?.querySelector(".deposit-callout");
       if (callout) {
-        callout.innerHTML = WITHDRAWALS_CONNECTED
-          ? "<strong>Review before withdrawing</strong><p>Check the coin, network, address and amount carefully. Blockchain transfers cannot be reversed.</p>"
-          : "<strong>Withdrawals are not connected yet</strong><p>You can choose a coin and fill in the form, but nothing is sent and your balance does not change until withdrawals go live.</p>";
+        callout.innerHTML = blocked
+          ? `<strong>Withdrawals unavailable</strong><p>${escapeHtml(blocked)}</p>`
+          : "<strong>Review before withdrawing</strong><p>Check the coin, network, address and amount carefully. Blockchain transfers cannot be reversed. The amount is held from your balance while we review the request.</p>";
+      }
+      const submit = root?.querySelector<HTMLButtonElement>("#wgo");
+      if (submit) submit.disabled = Boolean(blocked);
+      const heading = root?.querySelector("h2.sec");
+      if (heading) {
+        heading.textContent = "Your withdrawals";
+        while (heading.nextSibling) heading.nextSibling.remove();
+        heading.insertAdjacentHTML("afterend", withdrawalRowsMarkup());
       }
     };
   }
@@ -551,10 +622,32 @@ function installMemberDepositMethods() {
         }
         return;
       }
-      if (WITHDRAWALS_CONNECTED) return;
-      if (!target.closest("#wgo")) return;
+
+      const api = memberApi();
+      const cancelButton = target.closest<HTMLButtonElement>("[data-wd-cancel]");
+      if (cancelButton) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const id = cancelButton.dataset.wdCancel || "";
+        if (!id || !api.__AUVRENTHIA_INV__) return;
+        cancelButton.disabled = true;
+        cancelButton.textContent = "Cancelling…";
+        void api
+          .__AUVRENTHIA_INV__("cancelWithdrawal", id)
+          .then(() => api.__AUVRENTHIA_MEMBER__?.refresh(true))
+          .catch((error: unknown) => {
+            cancelButton.disabled = false;
+            cancelButton.textContent =
+              error instanceof Error ? error.message : "Could not cancel. Try again.";
+          });
+        return;
+      }
+
+      const submitButton = target.closest<HTMLButtonElement>("#wgo");
+      if (!submitButton) return;
       event.preventDefault();
       event.stopImmediatePropagation();
+      if (submitButton.disabled) return;
       const wallet = withdrawState();
       const asset = wallet.wdA;
       const network = NET[asset][wallet.wdNet] || NET[asset][0];
@@ -562,15 +655,45 @@ function installMemberDepositMethods() {
       const address = (document.querySelector("#wd") as HTMLInputElement | null)?.value.trim() || "";
       const error = document.querySelector<HTMLElement>("#we");
       if (!error) return;
-      if (!(quantity > 0)) {
+      error.style.color = "";
+      const blocked = withdrawalBlockReason();
+      if (blocked) {
+        error.textContent = blocked;
+      } else if (!(quantity > 0)) {
         error.textContent = "Enter an amount.";
       } else if (address.length < 26) {
         error.textContent = `Enter a valid ${network} address.`;
-      } else if (px(asset) && quantity * px(asset) + (FEE[asset] || 0) > cashNow()) {
-        error.textContent = "Not enough balance for this amount and the network fee.";
+      } else if (!px(asset)) {
+        error.textContent = `No price available for ${asset} right now.`;
+      } else if (quantity * px(asset) > cashNow()) {
+        error.textContent = "Not enough balance for this amount.";
+      } else if (!api.__AUVRENTHIA_INV__) {
+        error.textContent = "Account services are not available. Reload the page.";
       } else {
-        error.textContent =
-          "Withdrawals are not connected yet, so nothing was sent and your balance is unchanged.";
+        error.textContent = "";
+        submitButton.disabled = true;
+        submitButton.textContent = "Submitting…";
+        void api
+          .__AUVRENTHIA_INV__("requestWithdrawal", asset, network, address, quantity, quantity * px(asset))
+          .then(async () => {
+            try {
+              await api.__AUVRENTHIA_MEMBER__?.refresh(true);
+            } catch {
+              // The balance refreshes on the next sync.
+            }
+            const done = document.querySelector<HTMLElement>("#we");
+            if (done) {
+              done.textContent =
+                "Withdrawal requested. The amount is held from your balance while we review it.";
+              done.style.color = "var(--up)";
+            }
+          })
+          .catch((failure: unknown) => {
+            submitButton.disabled = false;
+            submitButton.textContent = "Request withdrawal";
+            error.textContent =
+              failure instanceof Error ? failure.message : "The withdrawal could not be requested.";
+          });
       }
     },
     true,
