@@ -27,6 +27,11 @@ declare function closeMenu(): void;
 declare function loadCrypto(): Promise<void>;
 declare function save(): void;
 declare function fmt(amount: number): string;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+declare let PS: Record<string, any> | null;
+declare let PCAT: string;
+declare const PL: Record<string, unknown[][]>;
+declare const CL: Record<string, unknown[]>;
 
 type Row = Record<string, unknown>;
 type ServerData = {
@@ -36,6 +41,7 @@ type ServerData = {
   ledger: Row[];
   plans: Row[];
   userPlans: Row[];
+  positionPlans?: Row[];
   signalPlans: Row[];
   signals: Row[];
   signalSubs: Row[];
@@ -3740,6 +3746,349 @@ export function installMemberDashboardTools() {
 
   if (!Array.isArray(ST.watchlist)) ST.watchlist = [];
   if (!Array.isArray(ST.priceAlerts)) ST.priceAlerts = [];
+
+  // ---- Wallet balance, Investment plans and My plans: live from Supabase -----
+  // The balance, plan catalog and each member's plans now come from the server
+  // (profiles, plans, user_plans, balance_ledger) instead of the old local demo
+  // engine. The Harbor page still draws everything, so these functions replace
+  // the pieces of it that used local sample data.
+  type PlanMeta = {
+    id: string;
+    frequency: string;
+    termMonths: number;
+    min: number;
+    max: number | null;
+    returnMin: number;
+    returnMax: number;
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const hostFns = window as unknown as Record<string, (...args: any[]) => any>;
+  const dollars = (value: number) =>
+    '$' + value.toLocaleString('en-US', { maximumFractionDigits: 2 });
+  const serverBalance = () => {
+    const balance = Number(server?.profile?.demo_balance);
+    return server && Number.isFinite(balance) ? balance : null;
+  };
+  const planDate = (start: string, months: number) => {
+    const date = new Date(`${start}T00:00:00`);
+    date.setMonth(date.getMonth() + months);
+    return date;
+  };
+  const formatDate = (date: Date) =>
+    Number.isNaN(date.getTime())
+      ? '–'
+      : date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+
+  // Balance: the server balance already includes plan investments and withdrawal holds.
+  const originalCashNow = hostFns.cashNow;
+  hostFns.cashNow = (...args: unknown[]) => serverBalance() ?? originalCashNow(...args);
+
+  // Reasons the member cannot start a plan right now (the database checks the same rules).
+  const investBlockReason = () => {
+    if (!server) return 'Your account is still loading. Try again in a moment.';
+    if (server.settings?.investing_paused) {
+      return 'Investing is temporarily paused. Please try again later.';
+    }
+    if (server.settings?.need_kyc !== false && server.profile?.kyc_status !== 'verified') {
+      return 'Complete identity verification before investing.';
+    }
+    return '';
+  };
+
+  // Plan catalog: start empty so the old hardcoded plans never flash on screen.
+  let plansLoaded = false;
+  Object.keys(PL).forEach((key) => delete PL[key]);
+  ST.plans = [];
+
+  const originalRenderPlans = hostFns.renderPlans;
+  hostFns.renderPlans = () => {
+    originalRenderPlans();
+    const list = document.getElementById('plist');
+    if (list && Object.keys(PL).length === 0) {
+      list.innerHTML = `<p class="note">${
+        plansLoaded
+          ? 'No investment plans are open right now. Please check back soon.'
+          : 'Loading investment plans…'
+      }</p>`;
+    }
+  };
+  hostFns.renderPlans();
+
+  const originalOpenPlan = hostFns.openPlan;
+  hostFns.openPlan = (category: string, index: number) => {
+    originalOpenPlan(category, index);
+    const meta = PL[category]?.[index]?.[7] as PlanMeta | undefined;
+    if (!meta || !PS) return;
+    PS.planId = meta.id;
+    PS.freq = meta.frequency;
+    PS.months = meta.termMonths;
+    PS.min = meta.min;
+    PS.max = meta.max;
+    PS.returnMin = meta.returnMin;
+    PS.returnMax = meta.returnMax;
+    PS.amt = Math.max(meta.min, PS.amt || 0);
+    PS.src = 'Wallet';
+    PS.rein = true;
+    hostFns.drawSheet();
+  };
+
+  // The server charges the full amount once, from the wallet, when the plan starts.
+  const originalDrawSheet = hostFns.drawSheet;
+  hostFns.drawSheet = () => {
+    originalDrawSheet();
+    const source = document.getElementById('src') as HTMLSelectElement | null;
+    if (source) {
+      source.innerHTML = `<option value="Wallet" selected>Wallet balance (${fmt(
+        Math.max(0, Number(serverBalance() ?? 0)),
+      )})</option>`;
+      source.disabled = true;
+    }
+    const amountLabel = document.querySelector('#ov label.fl[for="am"]');
+    if (amountLabel && PS) {
+      amountLabel.textContent = `Amount to invest now (minimum ${dollars(Number(PS.min) || 0)}${
+        PS.max != null ? `, maximum ${dollars(Number(PS.max))}` : ''
+      })`;
+    }
+    const often = Array.from(document.querySelectorAll('#ov .fl')).find(
+      (node) => node.textContent === 'How often',
+    );
+    if (often) {
+      often.nextElementSibling?.remove();
+      often.remove();
+    }
+    const blocked = investBlockReason();
+    const errorBox = document.getElementById('er');
+    if (blocked && errorBox) errorBox.textContent = blocked;
+  };
+
+  hostFns.sumHTML = () => {
+    if (!PS) return '';
+    const years = (Number(PS.months) || 12) / 12;
+    const low = PS.amt * Math.pow(1 + (Number(PS.returnMin) || 0) / 100, years);
+    const high = PS.amt * Math.pow(1 + (Number(PS.returnMax) || 0) / 100, years);
+    const ends = PS.start ? formatDate(planDate(String(PS.start), Number(PS.months) || 12)) : '–';
+    return `<div><span>You invest now</span><b>${dollars(Number(PS.amt) || 0)}</b></div><div><span>Charged from</span><b>Wallet balance</b></div><div><span>Projected value (target, not guaranteed)</span><b>${dollars(low)} to ${dollars(high)}</b></div><div><span>Plan ends</span><b>${ends}</b></div>`;
+  };
+
+  hostFns.confirmPlan = () => {
+    const errorBox = document.getElementById('er');
+    const goButton = document.getElementById('go2') as HTMLButtonElement | null;
+    const plan = PS;
+    if (!plan || !errorBox || !goButton) return;
+    const fail = (message: string) => {
+      errorBox.textContent = message;
+    };
+    const blocked = investBlockReason();
+    if (blocked) return fail(blocked);
+    if (!plan.planId) return fail('This plan is not available.');
+    if (!(plan.amt >= plan.min)) return fail(`The minimum for this plan is ${dollars(plan.min)}.`);
+    if (plan.max != null && plan.amt > plan.max) {
+      return fail(`The maximum for this plan is ${dollars(plan.max)}.`);
+    }
+    if (!plan.start) return fail('Choose a start date.');
+    const balance = serverBalance();
+    if (balance !== null && plan.amt > balance) {
+      return fail('That is more than your wallet balance. Deposit funds first or lower the amount.');
+    }
+    errorBox.textContent = '';
+    goButton.disabled = true;
+    goButton.textContent = 'Starting plan…';
+    const started = { ...plan };
+    void invCall(
+      'investInPlan',
+      started.planId,
+      started.amt,
+      started.freq,
+      started.months,
+      started.start,
+      started.rein,
+    ).then(
+      async () => {
+        try {
+          await refreshServer(false);
+        } catch {
+          // The balance and plan list refresh on the next sync.
+        }
+        const sheet = document.getElementById('ov');
+        if (sheet) {
+          sheet.innerHTML = `<div class="sheet"><div class="ok"><i>✓</i><h3>Plan started</h3><p class="lbl" style="margin:6px 0 20px">${escapeHtml(
+            started.n,
+          )}: ${dollars(Number(started.amt) || 0)} invested from your wallet, starting ${escapeHtml(
+            formatDate(new Date(`${started.start}T00:00:00`)),
+          )}. Track it under My plans.</p></div><button class="btn" id="done" style="width:100%">Done</button></div>`;
+        }
+      },
+      (error: unknown) => {
+        goButton.disabled = false;
+        goButton.textContent = 'Confirm plan';
+        errorBox.textContent =
+          error instanceof Error ? error.message : 'This plan could not be started. Please try again.';
+      },
+    );
+  };
+
+  // My plans: rows from user_plans are mirrored into the shape the Harbor page already draws.
+  // Money is charged once at the start; profit credited by an admin lands in the wallet.
+  const originalPst = hostFns.pst;
+  hostFns.pst = (plan: Record<string, unknown>, now: number = Date.now()) => {
+    if (!plan || !plan.server) return originalPst(plan, now);
+    const amount = Number(plan.amt) || 0;
+    const profit = Number(plan.profit) || 0;
+    const status = String(plan.status);
+    const closed = status === 'completed' || status === 'cancelled';
+    const startMs = new Date(`${plan.start}T00:00:00`).getTime();
+    const endMs = planDate(String(plan.start), Number(plan.months) || 12).getTime();
+    const progress =
+      closed ? 1 : endMs > startMs ? Math.min(1, Math.max(0, (now - startMs) / (endMs - startMs))) : 0;
+    const payout = plan.payout == null ? 0 : Number(plan.payout);
+    return {
+      k: 1,
+      nT: 1,
+      inv: amount,
+      val: closed ? 0 : amount,
+      gain: closed ? profit + payout - amount : profit,
+      st:
+        status === 'completed'
+          ? 'Completed'
+          : status === 'cancelled'
+            ? 'Cancelled'
+            : status === 'paused'
+              ? 'Paused'
+              : startMs > now
+                ? 'Scheduled'
+                : 'Active',
+      pct: progress,
+    };
+  };
+
+  const originalPlanCard = hostFns.planCard;
+  hostFns.planCard = (plan: Record<string, unknown>, state: unknown) => {
+    const html = originalPlanCard(plan, state) as string;
+    return plan && plan.server
+      ? html.replace(
+          /<p class="err">Paused\.[^<]*<\/p>/,
+          '<p class="err">This plan is paused. Contact support for details.</p>',
+        )
+      : html;
+  };
+
+  const originalRenderMyPlans = hostFns.renderMyPlans;
+  hostFns.renderMyPlans = () => {
+    originalRenderMyPlans();
+    const label = document.querySelector('#misc .head .lbl');
+    if (label) label.textContent = 'Live from your account. Profit credits are added to your wallet.';
+  };
+  R['My plans'] = () => hostFns.renderMyPlans();
+  // The nav calls R[page](), which held the original function, so point Withdraw at the
+  // wrapped version that shows withdrawal status and history.
+  R.Withdraw = () => hostFns.renderWallet();
+
+  // Orders and history: every balance movement, straight from the ledger.
+  const ledgerLabels: Record<string, string> = {
+    deposit: 'Deposit',
+    withdrawal_hold: 'Withdrawal',
+    withdrawal_release: 'Withdrawal',
+    plan_investment: 'Plan contribution',
+    plan_payout: 'Plan payout',
+    plan_profit: 'Plan profit',
+    trade_buy: 'Trade (buy)',
+    trade_sell: 'Trade (sell)',
+    signal_subscription: 'Signal subscription',
+    loan_disbursement: 'Loan',
+    loan_repayment: 'Loan repayment',
+    admin_adjust: 'Balance adjustment',
+  };
+  hostFns.allEvents = () => {
+    if (!server) return [];
+    return server.ledger.map((row) => {
+      const amount = Number(row.amount) || 0;
+      const kind = String(row.kind ?? '');
+      return {
+        t: Date.parse(String(row.created_at ?? '')) || 0,
+        ic: ledgerLabels[kind] ?? 'Balance change',
+        d: escapeHtml(row.note || ledgerLabels[kind] || kind),
+        u: (amount >= 0 ? '+' : '\u2212') + fmt(Math.abs(amount)),
+      };
+    });
+  };
+
+  syncServerViews.push(() => {
+    if (!server) return;
+    plansLoaded = true;
+
+    // Catalog the admin manages in "Plan catalog".
+    Object.keys(PL).forEach((key) => delete PL[key]);
+    const details = new Map<string, { name: string; category: string; ret: string; risk: number }>();
+    const retText = (low: number, high: number) =>
+      low === high ? `${low}%` : `${low}\u2013${high}%`;
+    [...server.plans, ...(server.positionPlans ?? [])].forEach((row) => {
+      details.set(String(row.id), {
+        name: String(row.name ?? 'Investment plan'),
+        category: String(row.category ?? 'Plans'),
+        ret: `${Number(row.return_min) || 0}\u2013${Number(row.return_max) || 0}%`,
+        risk: Math.min(3, Math.max(1, Number(row.risk) || 2)),
+      });
+    });
+    server.plans.forEach((row) => {
+      const category = String(row.category ?? 'Other');
+      const low = Number(row.return_min) || 0;
+      const high = Number(row.return_max) || 0;
+      const min = Number(row.min_amount) || 0;
+      const meta: PlanMeta = {
+        id: String(row.id),
+        frequency: ['Weekly', 'Monthly', 'Quarterly', 'One-time'].includes(String(row.frequency))
+          ? String(row.frequency)
+          : 'Monthly',
+        termMonths: Math.max(1, Number(row.term_months) || 12),
+        min,
+        max: row.max_amount == null ? null : Number(row.max_amount),
+        returnMin: low,
+        returnMax: high,
+      };
+      const mixKey = category in CL ? category : 'Stocks';
+      if (!PL[category]) PL[category] = [];
+      PL[category].push([
+        String(row.name ?? ''),
+        String(row.description ?? ''),
+        Math.min(3, Math.max(1, Number(row.risk) || 2)),
+        retText(low, high),
+        dollars(min),
+        meta.frequency,
+        [[mixKey, 100]],
+        meta,
+      ]);
+    });
+    if (PCAT !== 'All' && !PL[PCAT]) PCAT = 'All';
+    hostFns.renderPlans();
+
+    // The member's own plans.
+    ST.plans = server.userPlans.map((row) => {
+      const info = details.get(String(row.plan_id));
+      const hex = String(row.id).replace(/-/g, '').slice(0, 8);
+      return {
+        id: parseInt(hex, 16) || 0,
+        uid: String(row.id),
+        server: true,
+        n: info?.name ?? 'Investment plan',
+        c: info?.category ?? 'Plans',
+        ret: info?.ret ?? '0\u20130%',
+        risk: info?.risk ?? 2,
+        amt: Number(row.amount) || 0,
+        freq: String(row.frequency ?? 'Monthly'),
+        months: Number(row.term_months) || 12,
+        start: String(row.start_date ?? '').slice(0, 10),
+        src: 'Wallet',
+        rein: false,
+        t0: Date.parse(String(row.created_at ?? '')) || Date.now(),
+        delay: 0,
+        cap: 1e9,
+        status: String(row.status ?? 'active'),
+        profit: Number(row.profit_paid) || 0,
+        payout: row.payout_usd == null ? null : Number(row.payout_usd),
+      };
+    });
+    if (typeof hostFns.tickAll === 'function') hostFns.tickAll();
+  });
 
   // Load the real data now, then keep it fresh (balance, approvals, new signals).
   const reload = (repaintAnyPage = false) => {
