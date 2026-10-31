@@ -989,11 +989,7 @@ export default function AdminPage({
       const memberProfile = profilesRef.current.find(
         (row) => row.email.toLowerCase() === email,
       );
-      if (!memberProfile) {
-        throw new Error(
-          'The person must create an account before receiving a staff role.',
-        );
-      }
+      if (!memberProfile) continue;
       if (memberProfile.id === user?.id) continue;
       if (memberProfile.role === role || role === 'member') continue;
       const { error } = await supabase.rpc('admin_set_profile_role', {
