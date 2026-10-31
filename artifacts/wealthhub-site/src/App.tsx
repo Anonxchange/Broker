@@ -591,9 +591,9 @@ const heroBackgrounds = `
   }
 `;
 
-const pageTitle = 'Auvrenthia Markets | Multi-Asset Investment Broker';
+const pageTitle = 'Auvrenthia Markets | Investment Broker for Global Markets';
 const pageDescription =
-  'Explore investment opportunities across crypto, forex, agriculture, real estate, stocks, commodities, and more with Auvrenthia Markets.';
+  'Auvrenthia Markets is an investment broker offering access to crypto, forex, agriculture, real estate, stocks, commodities and more, with clear product information and an account built for investors.';
 
 const contactEmailUser = 'support';
 const contactEmailDomain = 'aurevathinmarket.com';
@@ -751,7 +751,7 @@ const textReplacements: Record<string, string> = {
   'Financial Glossary': 'Investment terms',
   'Key terms explained': 'Market terms',
   'Libraries for Quants': 'Portfolio tools',
-  'Libraries, Packages and Resources': 'Multi-asset information',
+  'Libraries, Packages and Resources': 'Information across asset classes',
   'About Us': 'About Auvrenthia',
   'Our Strategy Lab': 'Our Company',
   'Custom models for funds': 'Auvrenthia Markets',
@@ -760,11 +760,10 @@ const textReplacements: Record<string, string> = {
   Career: 'Contact',
   'Join the team': 'Get in touch',
   Articles: 'Market Insights',
-  '🚀 Thriving Trading Community': 'Multi-Asset Investment Platform',
-  'Wealth Hub - Where Traders Unite for':
-    'Auvrenthia, Building the Future of Digital Finance',
+  '🚀 Thriving Trading Community': 'Global Investment Broker',
+  'Wealth Hub - Where Traders Unite for': 'Invest with Confidence in',
   'Join a vibrant community where traders collaborate and share insights. Together, we empower each other to achieve financial success.':
-    'Explore opportunities across crypto, forex, agriculture, real estate, stocks, commodities, and more from one investment platform.',
+    'Auvrenthia Markets gives investors access to crypto, forex, agriculture, real estate, stocks and commodities through one account, with clear product information and accessible support at every step.',
   Confidence: 'Crypto',
   'Join Discord': 'Explore Markets',
   'powered by': 'Investment Markets',
@@ -772,114 +771,113 @@ const textReplacements: Record<string, string> = {
   'Our Trading': 'One Platform,',
   Community: 'Multiple Markets',
   'What Awaits Inside the Wealth Hub':
-    'Explore investment opportunities across global asset classes.',
+    'Explore investment opportunities across global asset classes, presented clearly in one place.',
   'Trade Ideas': 'Crypto & Digital Assets',
   'Join a network of active traders sharing high-conviction setups and live technical breakdowns.':
-    'Explore cryptocurrency markets and digital assets through available investment products.',
+    'Access cryptocurrency markets and digital assets through a range of investment products, with market information and product terms available before you invest.',
   'Connect with serious traders and gain access to a supportive, resource-rich environment.':
-    'Explore forex markets and currency pairs from around the world.',
+    'Access major and minor currency pairs from global foreign exchange markets, supported by clear product details and market information.',
   'Discover Educational Resources': 'Agriculture & Commodities',
   'Explore trading tools, podcasts, and tutorials built to sharpen your skills.':
-    'Explore agricultural markets, energy, metals, and other commodities.',
+    'Review opportunities across agricultural products, energy, metals and other commodities, with details on each market and product.',
   'Never Miss Market': 'Real Estate',
   Moves: 'and Stocks',
   'Instant notifications on time sensitive trading opportunities.':
-    'Explore property-focused and stock-market investment opportunities.',
+    'Access property and stock market investment opportunities, with product information available so you can review each option carefully.',
   Smarter: 'Investing',
   'Trading Starts Here': 'Across Markets',
   'Unlock the tools, insights, and community support you need to trade with confidence.':
-    'Explore crypto, forex, agriculture, real estate, stocks, commodities, and other investment markets.',
-  'Exclusive Trading Insights': 'Multi-Asset Access',
+    'Explore crypto, forex, agriculture, real estate, stocks, commodities and other investment markets from one account, with the information you need to make informed decisions.',
+  'Exclusive Trading Insights': 'Access to Multiple Asset Classes',
   'Join a community where cutting-edge data and real-time analysis drive smarter trading decisions.':
-    'Explore a range of asset classes from one investment-focused platform.',
+    'Invest across a range of asset classes from one account, and compare products before you decide.',
   'AI-Powered Market Tools': 'Global Market Coverage',
   'Use intelligent tools to track sentiment, flow, and price action without the noise.':
-    'Explore digital and traditional investment markets across multiple asset classes.',
+    'Review digital and traditional investment markets across multiple asset classes, with market information organized in one place.',
   'Instant Market Alerts': 'Product Information',
   'Stay one step ahead with real-time updates on key market shifts.':
-    'Review market details and product information before making investment decisions.',
+    'Review market details, product terms and associated risks before making any investment decision.',
   'Strategy Ideas': 'Investment Choice',
   'Explore high-quality research and ongoing trade ideas shared inside the community.':
-    'Explore available markets and compare asset classes that fit your interests.',
+    'Compare available markets and choose asset classes that match your investment goals, timeline and risk tolerance.',
   benefits: 'Auvrenthia Markets',
   'Why Choose': 'Why Choose',
   'Wealth Hub': 'Auvrenthia Markets',
   'Experience unparalleled trading support and insights.':
-    'Explore multiple investment categories through Auvrenthia Markets.',
+    'A professional approach to investing across multiple markets, built around clarity, accessibility and informed decision making.',
   'Discover the Wealth Hub Advantage': 'Explore Multiple Markets',
   'Engage, learn, and succeed together.':
-    'Discover investment options across a broader range of asset classes.',
+    'Discover investment options across a broader range of asset classes, all managed from a single account.',
   'Smart Research Automation': 'Crypto, Forex & Stocks',
   'Harness the power of our discord bots.':
-    'Explore digital assets, currency pairs, and equity markets.',
+    'Access digital assets, currency pairs and equity markets, with clear information on each product.',
   'Connect with Our Community': 'Agriculture & Commodities',
   'Collaborate and share insights with fellow traders.':
-    'Review opportunities across agricultural products, energy, metals, and other commodities.',
+    'Review opportunities across agricultural products, energy, metals and other commodities.',
   'Real Time Market Updates': 'Real Estate',
   'Dive into global market trends.':
-    'Explore property-focused investment opportunities and market information.',
+    'Explore property investment opportunities, with market information and product details to support your review.',
   welcome: 'Asset Classes',
   Collaborative: 'Investing',
   'Trading Excellence': 'Across Markets',
   'Explore our organized Discord knowledge categories.':
-    'Explore a broad mix of investment markets through Auvrenthia Markets.',
+    'Explore a broad mix of investment markets through Auvrenthia Markets, each with its own product information and terms.',
   Channels: 'Digital Assets',
   'Content Library': 'Crypto',
   'Access curated videos, podcasts, and advanced tools covering trader education.':
-    'Explore digital-asset markets, including cryptocurrency products.',
+    'Access digital asset markets, including cryptocurrency products, with the details you need to evaluate each one.',
   'Trading Hub': 'Forex',
   'Research-bot and trading-ideas channels for collaboration.':
-    'Explore currency pairs and global foreign-exchange markets.',
+    'Access currency pairs and global foreign exchange markets, with product information available for each.',
   'Market Updates': 'Agriculture & Commodities',
   'Automatic real-time trend alerts for informed decisions.':
-    'Review agricultural, energy, metals, and other commodity markets.',
+    'Review agricultural, energy, metals and other commodity markets, with details on how each product works.',
   'Member Benefits': 'Real Estate',
   'Unlock content and tools designed to sharpen your skills.':
-    'Explore real-estate-related investment opportunities and product information.',
+    'Explore real estate investment opportunities, with product information and terms available before you invest.',
   'Pro Lounge': 'Stocks',
   'Exlusive channel for like minded professional traders.':
-    'Explore companies and stock-market investment opportunities.',
+    'Access listed companies and stock market investment opportunities, with clear product information.',
   'Smart Signals': 'Portfolio Options',
   'AI Bot': 'More Asset Classes',
   'Charts, dark pool data, crypto tracking, and scanning tools.':
-    'Explore more investment categories and compare market information in one place.',
+    'Explore additional investment categories and compare market information in one place.',
   'service launching soon': 'Auvrenthia Markets',
   'Unlock 50% Off –': 'Explore',
   Exclusive: 'Global',
   'Early Access!': 'Investment Markets',
   'Be the first to join Wealth Hub and get 50% off! Offer available for a limited time only.':
-    'Explore opportunities across crypto, forex, agriculture, real estate, stocks, commodities, and more.',
+    'Explore opportunities across crypto, forex, agriculture, real estate, stocks, commodities and more, from one account.',
   'Claim Your Spot & Save 50%': 'Explore Markets',
   'Monthly Plan': 'Crypto & Forex',
-  '$39': 'Contact',
+  $39: 'Contact',
   'per month': 'for details',
   'Paid monthly, cancel anytime': 'Product availability and terms vary.',
   'Coming soon': 'Explore Markets',
   'Real-time options flow, dark pool & short data alerts':
-    'Crypto and foreign-exchange market information',
+    'Crypto and foreign exchange market information',
   'Crypto dashboard with instant price and flow updates':
     'Access to crypto, forex, agriculture, and commodities',
   'Interactive charts, screeners & heat maps for quick analysis':
     'Market information and product details',
   'Auto-updated economic calendar and macro indicators':
-    'Explore stocks and other listed assets',
+    'Stocks and other listed assets',
   'Discovery channel for new trade ideas & opportunities':
-    'Explore property-focused opportunities',
+    'Property investment opportunities',
   'Weekly research digest + educational videos/tools':
     'Review product information before investing',
   'Community chat with Q&A sessions with the Wealth Hub team':
     'Contact Auvrenthia Markets for product information',
-  Annual: 'Multi-Asset Access',
-  '$390': 'Contact',
+  Annual: 'Access to Multiple Markets',
+  $390: 'Contact',
   'per year': 'for details',
   'Save 2 months': 'Terms vary by product',
   'Everything in the Monthly plan': 'Explore multiple asset classes',
   'Quarterly deep-dive reports & asymmetric trade ideas':
-    'Crypto, forex, and digital assets',
-  'Access to Pro Lounge (pro-level market talk)':
-    'Agriculture and commodities',
+    'Crypto, forex and digital assets',
+  'Access to Pro Lounge (pro-level market talk)': 'Agriculture and commodities',
   'Unusual volume alerts (reports & unusual volume alerts)':
-    'Real estate and property-focused products',
+    'Real estate and property products',
   'Government contracts & corporate lobbying updates':
     'Stocks and other listed investments',
   'Early access to new tools & feature betas':
@@ -889,8 +887,8 @@ const textReplacements: Record<string, string> = {
   Real: 'Explore',
   Strategies: 'Global Markets',
   '. No Hype.': ' with clear product information.',
-  "Discover a collection of trading strategies. Whether you're refining your edge or building your first system, the Archive gives you direct access to what actually works.":
-    'Explore multiple asset classes and review product information before making investment decisions.',
+  'Discover a collection of trading strategies. Whether you\'re refining your edge or building your first system, the Archive gives you direct access to what actually works.':
+    'Explore multiple asset classes and review product information, terms and risks before making investment decisions.',
   'Trading Strategies': 'Crypto & Forex',
   'Across markets and timeframes': 'Explore available asset classes',
   'Code You Can Use': 'Agriculture & Commodities',
@@ -904,12 +902,13 @@ const textReplacements: Record<string, string> = {
   'Wealth Hub Archive': 'Auvrenthia Markets',
   'Instant digital access. One time archive.':
     'Explore opportunities across investment markets.',
-  '$490': 'Contact',
+  $490: 'Contact',
   'One-time payment': 'Product details vary',
-  '36 full issues (PDF download)': 'Crypto, forex, agriculture, and commodities',
-  '500+ pages of content': 'Real estate and stock-market opportunities',
+  '36 full issues (PDF download)':
+    'Crypto, forex, agriculture, and commodities',
+  '500+ pages of content': 'Real estate and stock market opportunities',
   'Over 5,000 hours of research': 'Digital and traditional asset classes',
-  'Backtested Trading Strategies': 'Market-specific product information',
+  'Backtested Trading Strategies': 'Information specific to each market',
   'Address:': 'Address:',
   '590 Madison Avenue New York, NY 10022':
     'Miami, Florida 33186, United States of America',
@@ -1408,6 +1407,7 @@ function preparePage(source: string) {
   homeBrandStyles.textContent = `
     .logo-link { width:171px!important; min-width:0!important; }
     .logo-link .auvrenthia-logo { display:block; width:171px; height:26px; max-width:42vw; }
+    .auvrenthia-logo { display:block; width:171px; height:26px; max-width:42vw; }
     .auvrenthia-primary-cta {
       display:inline-flex!important; align-items:center!important; justify-content:center!important;
       min-height:48px!important; padding:0 22px!important; border:1px solid rgba(255,255,255,.2)!important;
@@ -1432,6 +1432,34 @@ function preparePage(source: string) {
       brandLink.setAttribute('href', '/');
       brandLink.setAttribute('target', '_top');
       brandLink.setAttribute('aria-label', 'Auvrenthia Markets home');
+    });
+
+  const footerLogoSelector = [
+    'footer .logo-link',
+    'footer .footer-logo',
+    'footer .navbar-brand',
+    'footer .w-nav-brand',
+    '.footer-logo',
+    '.footer-brand',
+    '[class*="footer"] [class*="logo"]:not([class*="logos"])',
+  ].join(',');
+
+  Array.from(pageDocument.querySelectorAll<HTMLElement>(footerLogoSelector))
+    .filter(
+      (element, _index, all) =>
+        !all.some((other) => other !== element && other.contains(element)),
+    )
+    .forEach((footerLogo) => {
+      const logoImage = pageDocument.createElement('img');
+      logoImage.src = '/wealthhub/auvrenthia-logo.svg';
+      logoImage.alt = 'Auvrenthia Markets';
+      logoImage.className = 'auvrenthia-logo';
+      footerLogo.replaceChildren(logoImage);
+      if (footerLogo instanceof HTMLAnchorElement) {
+        footerLogo.setAttribute('href', '/');
+        footerLogo.setAttribute('target', '_top');
+        footerLogo.setAttribute('aria-label', 'Auvrenthia Markets home');
+      }
     });
 
   pageDocument
@@ -1632,7 +1660,7 @@ function preparePage(source: string) {
       if (organization) {
         organization.name = 'Auvrenthia Markets';
         organization.description =
-          'A multi-asset investment platform covering crypto, forex, agriculture, real estate, stocks, commodities, and more.';
+          'An investment broker offering access to crypto, forex, agriculture, real estate, stocks, commodities and more.';
         delete organization.offers;
         delete organization.url;
         delete organization.sameAs;
